@@ -1,0 +1,23 @@
+cscope.files
+cscope.out
+TAGS
+tags
+/build/
+*.o
+*.out
+*.exe
+
+# 컴파일러 생성 파일
+*.d
+*.a
+*.so
+
+# 에디터 임시 파일 (예: Vim, Emacs)
+*.swp
+*~
+# macOS에서 생성되는 시스템 파일
+.DS_Store
+
+# IDE 설정 파일 (예: Visual Studio Code, CLion)
+.vscode/
+.idea/
