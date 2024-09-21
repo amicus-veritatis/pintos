@@ -59,6 +59,8 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+
+  /* load the binary. */
   success = load (file_name, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
@@ -88,6 +90,7 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  while (true) {}
   return -1;
 }
 
@@ -131,7 +134,7 @@ process_activate (void)
      interrupts. */
   tss_update ();
 }
-
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -221,6 +224,20 @@ load (const char *file_name, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
+  printf("[DEBUG] file_name: %s\n", file_name);
+  char* argv[128];
+  char* arg, *save_ptr;
+  int argc = 0;
+
+  arg = strtok_r(file_name, ARG_DELIM, &save_ptr);
+  while (arg) {
+    printf("[DEBUG] TOKEN: %s\n", arg);
+    argv[argc++] = arg;
+    arg = strtok_r(NULL, ARG_DELIM, &save_ptr);
+  }
+
+  printf("Checkpoint 1: Token parsing\n");
+
   /* Open executable file. */
   file = filesys_open (file_name);
   if (file == NULL) 
@@ -304,6 +321,47 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* Set up stack. */
   if (!setup_stack (esp))
     goto done;
+  uint8_t size = 0;
+  for (i=argc - 1; i>=0; i--){
+    int arg_len = strlen(argv[i]) + SENTINEL;
+    *esp -= arg_len;
+    memcpy(*esp, argv[i], arg_len);
+    argv[i] = *esp;
+    size += arg_len;
+  }
+  printf("[DEBUG] Hex dump: Line 332\n");
+  hex_dump(*esp, *esp, size, true);
+
+  /* Do some pointer arithmetics. */
+while ((uintptr_t)(*esp) % 8 != 0) {
+  *esp = (void *)((uint8_t *)(*esp) - 1);
+  *((uint8_t *)(*esp)) = 0;
+  size++;
+}
+  printf("[DEBUG] Hex dump: Line 341\n");
+  hex_dump(*esp, *esp, size, true);
+  for (i=argc; i>=0; i--) {
+    *esp -= sizeof(char *); // sizeof char * is 8.
+    if (i==argc){
+      memset(*esp, 0, sizeof(char **));
+      size += sizeof(char **);
+    }
+    else {
+      memcpy(*esp, &argv[i], sizeof(char **));
+      size += sizeof(char **);
+    }
+  }
+  printf("[DEBUG] Hex dump: Line 357\n");
+  hex_dump(*esp, *esp, size, true);
+  /* Push argc */
+  memset(*esp, argc, sizeof(int));
+  size += sizeof(int);
+  /* Push fake return address */
+  memset(*esp, 0, sizeof(void *)); 
+  size += sizeof(void *);
+
+  printf("[DEBUG] Hex dump: Line 366\n");
+  hex_dump(*esp, *esp, size, true);
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
@@ -315,7 +373,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
   file_close (file);
   return success;
 }
-
 /* load() helpers. */
 
 static bool install_page (void *upage, void *kpage, bool writable);
