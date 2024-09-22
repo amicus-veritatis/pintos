@@ -90,7 +90,6 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  while (true) {}
   return -1;
 }
 
@@ -224,19 +223,16 @@ load (const char *file_name, void (**eip) (void), void **esp)
     goto done;
   process_activate ();
 
-  printf("[DEBUG] file_name: %s\n", file_name);
   char* argv[128];
   char* arg, *save_ptr;
   int argc = 0;
 
   arg = strtok_r(file_name, ARG_DELIM, &save_ptr);
   while (arg) {
-    printf("[DEBUG] TOKEN: %s\n", arg);
     argv[argc++] = arg;
     arg = strtok_r(NULL, ARG_DELIM, &save_ptr);
   }
 
-  printf("Checkpoint 1: Token parsing\n");
 
   /* Open executable file. */
   file = filesys_open (file_name);
@@ -321,47 +317,50 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* Set up stack. */
   if (!setup_stack (esp))
     goto done;
-  uint8_t size = 0;
-  for (i=argc - 1; i>=0; i--){
+
+  /* Push arguments. */
+  for (i=argc-1; i>=0; i--){
     int arg_len = strlen(argv[i]) + SENTINEL;
-    *esp -= arg_len;
+    *esp = (uint8_t *)(*esp) - arg_len;
     memcpy(*esp, argv[i], arg_len);
     argv[i] = *esp;
-    size += arg_len;
   }
-  printf("[DEBUG] Hex dump: Line 332\n");
-  hex_dump(*esp, *esp, size, true);
 
   /* Do some pointer arithmetics. */
-while ((uintptr_t)(*esp) % 8 != 0) {
-  *esp = (void *)((uint8_t *)(*esp) - 1);
-  *((uint8_t *)(*esp)) = 0;
-  size++;
-}
-  printf("[DEBUG] Hex dump: Line 341\n");
-  hex_dump(*esp, *esp, size, true);
+  uint32_t padding_size = (uintptr_t)(*esp) % WORD_SIZE;
+  if (padding_size != 0) {
+    *esp -= padding_size;
+    memset(*esp, 0, padding_size);
+  }
+
   for (i=argc; i>=0; i--) {
-    *esp -= sizeof(char *); // sizeof char * is 8.
+    /* Terminate with 0*/
     if (i==argc){
-      memset(*esp, 0, sizeof(char **));
-      size += sizeof(char **);
+      *esp = (uint8_t *)(*esp) - sizeof(char *);
+      memset(*esp, 0, sizeof(char *));
     }
+    /* Normal string */
     else {
-      memcpy(*esp, &argv[i], sizeof(char **));
-      size += sizeof(char **);
+      *esp = (uint8_t *)(*esp) - sizeof(char *);
+      memcpy(*esp, &argv[i], sizeof(char *));
     }
   }
-  printf("[DEBUG] Hex dump: Line 357\n");
-  hex_dump(*esp, *esp, size, true);
-  /* Push argc */
-  memset(*esp, argc, sizeof(int));
-  size += sizeof(int);
-  /* Push fake return address */
-  memset(*esp, 0, sizeof(void *)); 
-  size += sizeof(void *);
 
-  printf("[DEBUG] Hex dump: Line 366\n");
-  hex_dump(*esp, *esp, size, true);
+  /*
+  push argv.
+  as we assigned &argv[0] to *esp, esp should contain
+  the address of &argv[0].
+  */
+  *esp = (uint8_t *)(*esp) - sizeof(char **);
+  memcpy(*esp, esp, sizeof(char **));
+
+  /* Push argc */
+  *esp = (uint8_t *)(*esp) - sizeof(int);
+  memcpy(*esp, &argc, sizeof(int));
+
+  /* Push fake return address */
+  *esp = (uint8_t *)(*esp) - sizeof(void *);
+  memset(*esp, 0, sizeof(void *)); 
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
