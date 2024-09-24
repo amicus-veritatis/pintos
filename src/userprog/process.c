@@ -30,7 +30,7 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
-
+  char *save_ptr = NULL;
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
@@ -39,6 +39,7 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
+  file_name = strtok_r(file_name, " ", &save_ptr);
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
@@ -90,7 +91,8 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  return -1;
+	for (int i=0;i<500000000;i++){}
+    return -1;
 }
 
 /* Free the current process's resources. */
@@ -235,7 +237,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
 
   /* Open executable file. */
-  file = filesys_open (file_name);
+  file = filesys_open (argv[0]);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
@@ -332,35 +334,33 @@ load (const char *file_name, void (**eip) (void), void **esp)
     *esp -= padding_size;
     memset(*esp, 0, padding_size);
   }
+  /* Terminate with 0 */
+  *esp = (uint8_t *)(*esp) - sizeof(char *);
+  memset(*esp, 0, sizeof(char *));
 
-  for (i=argc; i>=0; i--) {
-    /* Terminate with 0*/
-    if (i==argc){
-      *esp = (uint8_t *)(*esp) - sizeof(char *);
-      memset(*esp, 0, sizeof(char *));
-    }
-    /* Normal string */
-    else {
+  for (i=argc-1; i>=0; i--) {
+      /* Normal string */
       *esp = (uint8_t *)(*esp) - sizeof(char *);
       memcpy(*esp, &argv[i], sizeof(char *));
-    }
   }
+
+  /* Save the address of argv[0] */
+  void *argv_addr = *esp;
 
   /*
   push argv.
-  as we assigned &argv[0] to *esp, esp should contain
+  as we assigned &argv[0] to *argv_addr, argv_addr should contain
   the address of &argv[0].
   */
-  *esp = (uint8_t *)(*esp) - sizeof(char **);
-  memcpy(*esp, esp, sizeof(char **));
-
+  *esp = (uint8_t *)(*esp) - sizeof(void *);
+  memcpy(*esp, &argv_addr, sizeof(void *));
   /* Push argc */
   *esp = (uint8_t *)(*esp) - sizeof(int);
   memcpy(*esp, &argc, sizeof(int));
 
   /* Push fake return address */
-  *esp = (uint8_t *)(*esp) - sizeof(void *);
-  memset(*esp, 0, sizeof(void *)); 
+  *esp = (uint8_t *)(*esp) - sizeof(char **);
+  memset(*esp, 0, sizeof(char **)); 
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
