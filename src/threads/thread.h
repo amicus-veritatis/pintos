@@ -23,7 +23,7 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
-
+#define FD_MAX_SIZE 128
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -97,6 +97,12 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
     int exit_status;
+    /* According to Pintos Manual 3.4.2. System Calls FAQ,
+     * the usage of struct file *fd is discrouaged.
+     * but for now, we just choose to use it.
+     * maybe needed to be refactored.
+     */
+    struct file *fd[FD_MAX_SIZE]; /* file descriptor table. */
 #endif
 
     /* Owned by thread.c. */

@@ -106,7 +106,6 @@ void check_address(const void *addr) {
 	}
 }
 
-
 /* 
  * Get current thread and shut down it.
  * Terminates the current user program,
@@ -119,8 +118,8 @@ void
 exit (int status)
 {
 	struct thread* cur = thread_current();
-	printf("%s: exit(%d)\n", cur->name, status);
-	// cur -> exit_status = status;
+	cur -> exit_status = status;
+	printf("%s: exit(%d)\n", thread_name(), status);
 	thread_exit();
 }
 
@@ -147,8 +146,11 @@ write(int fd, const void *buffer, unsigned size)
         	lock_release(&fs_lock);
         	return size;	
 	} 
-	// printf("File write not implemented yet.\n");
-	return -1;
+	else if (fd > STDERR_FILENO && fd < FD_MAX_SIZE) {
+		/* fprint has not been implemented yet! */
+		printf("File write is not implemented yet\n");
+		return -1;
+	}
 }
 /* 
  * return with -1 if user is either trying to
@@ -165,6 +167,9 @@ int read(int fd, void *buffer, unsigned size) {
         	lock_release(&fs_lock);
         	return size;	
 	} 
-	printf("File write not implemented yet.\n");
-	return -1;
+	else if (fd > STDERR_FILENO && fd < FD_MAX_SIZE) {
+		/* fprint has not been implemented yet! */
+		printf("[ERROR] File read is not implemented yet\n");
+		return -1;
+	}	
 }

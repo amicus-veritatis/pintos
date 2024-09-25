@@ -91,7 +91,7 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-	for (int i=0;i<500000000;i++){}
+    for (int i=0;i<500000000;i++){}
     return -1;
 }
 
