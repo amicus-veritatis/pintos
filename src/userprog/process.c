@@ -34,15 +34,18 @@ process_execute (const char *file_name)
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
-    return TID_ERROR;
+  if (fn_copy == NULL) {
+  	return TID_ERROR;
+  }
   strlcpy (fn_copy, file_name, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
   file_name = strtok_r(file_name, " ", &save_ptr);
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+  /* failed to open file */
+  if (tid == TID_ERROR) {
+    palloc_free_page (fn_copy);
+  }
   return tid;
 }
 
@@ -64,11 +67,19 @@ start_process (void *file_name_)
   /* load the binary. */
   success = load (file_name, &if_.eip, &if_.esp);
 
+  struct thread *parent;
+  parent = thread_current()->parent;
+  if (parent != NULL) {
+    lock_acquire(&parent->child_lock);
+    parent->load_status = success ? -1 : 1;
+    lock_release(&parent->child_lock);
+  }
+
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
+  if (!success) {
     thread_exit ();
-
+  }
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its

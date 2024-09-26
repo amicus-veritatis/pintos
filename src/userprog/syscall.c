@@ -5,6 +5,9 @@
 #include "threads/thread.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "process.h"
+#include "devices/input.h"
+#include "userprog/pagedir.h"
 
 static void syscall_handler (struct intr_frame *);
 
@@ -21,37 +24,40 @@ static int write (int, const void *, unsigned);
 static void seek (int, unsigned);
 static unsigned tell (int);
 static void close (int);
+static pid_t exec(const char* cmd_line);
 /* End of system call functions */
 
 struct lock fs_lock;
 
 void
-syscall_init (void) 
+syscall_init () 
 {
 	lock_init(&fs_lock);
 	intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
+/* Do not trust every pointer no matter what */
 static void
 syscall_handler (struct intr_frame *f) 
 {
 	uint32_t* esp = (uint32_t*) f->esp;
+	check_address(esp);
 	int syscall_number = *esp;
-	// printf("[SYS_CALL] ");
+	// printf("[SYS_CALL] ");	
 	switch (syscall_number) {
 		case SYS_HALT:
 			// printf("HALT!\n");
 			break;
 		case SYS_EXIT:
-			// printf("EXIT!\n");
-			// printf("(int) esp[1]: %d\n", (int) esp[1]);
+			/* Never trust anything */
+			check_address(&esp[1]);
 			exit((int) esp[1]);
 			break;
 		case SYS_EXEC:
-			printf("EXEC!\n");
+			f->eax = exec((const char *) esp[1]);
 			break;
 		case SYS_WAIT:
-			printf("WAIT!\n");
+			f->eax = wait((int) esp[1]);	
 			break;
 		case SYS_CREATE:
 			printf("CREATE!\n");
@@ -74,36 +80,37 @@ syscall_handler (struct intr_frame *f)
 		case SYS_SEEK:
 		case SYS_TELL:
 		case SYS_CLOSE:
-			printf("몰라 씨발련아!!~!~!!!!!!!\n");
 			break;
 		case SYS_MMAP:
 		case SYS_MUNMAP:
-			printf("PROJECT 3!\n");
 			break;
 		case SYS_CHDIR:
 		case SYS_MKDIR:
 		case SYS_READDIR:
 		case SYS_ISDIR:
 		case SYS_INUMBER:
-			printf("PROJECT 4!\n");
 			break;
 		default:
-			printf("하다리, %d\n", *esp);
+			exit(-1);
 			break;
 	}
 }		
 
 
+/* See threads/vaddr.h */
 static bool
 is_valid_user_vaddr (const void* addr){
 	return addr != NULL && is_user_vaddr(addr);
 }
 
-
+/* Two conditions that terminate the process
+ * 1. addr is not a valid user vaddr
+ * 2. Virtual memory related
+ */
 void check_address(const void *addr) {
-	if (!is_valid_user_vaddr(addr)) {
+	if (!is_valid_user_vaddr(addr) || pagedir_get_page (thread_current() -> pagedir,addr) == NULL) {
 		exit(-1);
-	}
+	} 
 }
 
 /* 
@@ -137,13 +144,10 @@ int
 write(int fd, const void *buffer, unsigned size)
 {
 	check_address(buffer);
-
 	if (fd == STDIN_FILENO) {
 		return -1;
 	} else if (fd == STDOUT_FILENO) {
-        	lock_acquire(&fs_lock);
         	putbuf(buffer, size);
-        	lock_release(&fs_lock);
         	return size;	
 	} 
 	else if (fd > STDERR_FILENO && fd < FD_MAX_SIZE) {
@@ -155,16 +159,20 @@ write(int fd, const void *buffer, unsigned size)
 /* 
  * return with -1 if user is either trying to
  * read stdout  or cause out-of-range error
+ * for input_getc(), see src/devices/input.h
  */
 int read(int fd, void *buffer, unsigned size) {
 	check_address(buffer);
-
+	check_address(buffer+size);
 	if (fd == STDOUT_FILENO) {
 		return -1;
 	} else if (fd == STDIN_FILENO) {
-        	lock_acquire(&fs_lock);
-        	int size = input_getc();
-        	lock_release(&fs_lock);
+        	/* We do not check \0
+		 * Trust programmers! */
+		lock_acquire(&fs_lock);
+		char *buf = buffer;
+        	*buf = input_getc();
+		lock_release(&fs_lock);
         	return size;	
 	} 
 	else if (fd > STDERR_FILENO && fd < FD_MAX_SIZE) {
@@ -172,4 +180,26 @@ int read(int fd, void *buffer, unsigned size) {
 		printf("[ERROR] File read is not implemented yet\n");
 		return -1;
 	}	
+}
+
+/* See src/devicees/shutdown.c */
+void
+halt ()
+{
+	shutdown_power_off ();
+}
+
+/* exit the process if pointer points to invalid address
+ * do not trust pointer
+ * Also acquire and release fs_lock because 
+ * process_execute() calls load() and load() uses file system.
+ */
+pid_t
+exec (const char *cmd_line)
+{
+	lock_acquire(&fs_lock);
+	check_address(cmd_line);
+	tid_t ret = process_execute(cmd_line);
+	lock_release(&fs_lock);
+	return ret;
 }

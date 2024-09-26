@@ -4,7 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-
+#include "synch.h"
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -95,14 +95,29 @@ struct thread
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
+
     uint32_t *pagedir;                  /* Page directory. */
-    int exit_status;
+    struct thread* parent; 
+    /* child threads */
+    struct list children;
+    struct list_elem child_elem;
+    /* 
+     * -1: failed
+     *  0: init status
+     *  1: success
+     */
+    int8_t load_status; 
+    /* Use lock instead of semaphore */
+    struct lock child_lock;
+
+   int exit_status;
     /* According to Pintos Manual 3.4.2. System Calls FAQ,
      * the usage of struct file *fd is discrouaged.
      * but for now, we just choose to use it.
      * maybe needed to be refactored.
      */
     struct file *fd[FD_MAX_SIZE]; /* file descriptor table. */
+    
 #endif
 
     /* Owned by thread.c. */
