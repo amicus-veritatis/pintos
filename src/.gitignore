@@ -4,8 +4,7 @@ TAGS
 tags
 .vimrc
 /build/
-/tests/
-/tests/**/*
+tests/
 *.o
 *.out
 *.exe
