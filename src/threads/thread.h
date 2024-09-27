@@ -34,12 +34,7 @@ struct process_control_block {
 	int pid;
 	const char* fn_copy;
 	struct thread* parent;
-	int load_status;
-	int exit_status;
-	int wait;
-	int exit;
-	struct semaphore load_sema;
-	struct semaphore wait_sema;
+	
 };
 
 /* A kernel thread or user process.
@@ -116,9 +111,19 @@ struct thread
 
     uint32_t *pagedir;                  /* Page directory. */
     struct process_control_block *pcb;
+    int exit_status;
+
     /* child threads */
+    int load_status;
+    struct semaphore load_sema;
+
     struct list children;
     struct list_elem child_elem;
+    struct semaphore wait_sema;
+    /* Used for waiting */
+    struct lock wait_lock;
+    struct condition wait_cond;
+
     /* According to Pintos Manual 3.4.2. System Calls FAQ,
      * the usage of struct file *fd is discrouaged.
      * but for now, we just choose to use it.

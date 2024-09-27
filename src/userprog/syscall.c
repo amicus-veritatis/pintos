@@ -126,7 +126,7 @@ void
 exit (int status)
 {
 	struct thread* cur = thread_current();
-	cur -> pcb -> exit_status = status;
+	cur -> exit_status = status;
 	printf("%s: exit(%d)\n", thread_name(), status);
 	thread_exit();
 }
@@ -205,5 +205,8 @@ exec (const char *cmd_line)
 	lock_acquire(&fs_lock);
 	tid_t ret = process_execute(cmd_line_copy);
 	lock_release(&fs_lock);
+	if (ret == TID_ERROR) {
+		return -1;
+	}
 	return ret;
 }

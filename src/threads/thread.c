@@ -463,13 +463,16 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-  t->pcb = NULL;
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
+  t->pcb = NULL;
+  sema_init(&(t->load_sema), 0);
+  lock_init(&(t->wait_lock));
+  cond_init(&(t->wait_cond));
   list_init(&(t->children));
+  struct list_elem *it;
   list_push_back(&running_thread()->children, &t->child_elem);
-			  
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

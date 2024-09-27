@@ -47,29 +47,30 @@ process_execute (const char *file_name)
 	return TID_ERROR;
   }; 
   pcb->fn_copy = fn_copy;
-  pcb->parent = thread_current();
-  pcb->exit_status = -1;
+  struct thread* cur = thread_current();
+  pcb->parent = cur;
   /* Loading in progress */
-  struct process_control_block *parent_pcb = pcb->parent->pcb;
-  parent_pcb->load_status = LOAD_INIT;
+  cur->load_status = LOAD_INIT;
  
   /* Create a new thread to execute FILE_NAME. */
   char *fn_copy_copy = palloc_get_page (0);
-   if (fn_copy_copy == NULL) {
+  if (fn_copy_copy == NULL) {
 	  palloc_free_page (fn_copy);
 	  palloc_free_page (pcb);
 	  return TID_ERROR;
   }
   strlcpy(fn_copy_copy, file_name, PGSIZE);
-  file_name = strtok_r(fn_copy_copy, " ", &save_ptr); 
+  file_name = strtok_r(fn_copy_copy, " ", &save_ptr);
+  /* Wait until thread is actually created */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, pcb);
+  sema_down(&cur->load_sema);
+ 
   palloc_free_page(fn_copy_copy);
   /* failed to open file */
   if (tid == TID_ERROR) {
     palloc_free_page (pcb);
   }
-  sema_down(&pcb->load_sema);
-  
+
   return tid;
 }
 
@@ -91,9 +92,7 @@ start_process (void *pcb_)
   /* load the binary. */
   success = load (file_name, &if_.eip, &if_.esp);
   struct thread* parent = pcb->parent;
-  if (parent != NULL) {
-  	parent->pcb->load_status = success ? LOAD_FAIL : LOAD_SUCCESS;
-  }
+
   /* If load failed, quit. */
   palloc_free_page (file_name);
 
@@ -101,12 +100,18 @@ start_process (void *pcb_)
   * not to reuse it.
   */
   struct thread *cur = thread_current();
-  pcb->pid = success ? (int)(cur->tid) : TID_ERROR;
+  pcb->pid = success ? (pid_t)(cur->tid) : TID_ERROR;
   cur->pcb = pcb;
-  sema_up(&pcb->load_sema);
+  if (parent != NULL) {
+      parent->load_status = success ? LOAD_FAIL : LOAD_SUCCESS;
+      /* Process is now created or failed to do so; parent can do what it wants to do */
+      sema_up(&(parent->load_sema));
+  }
+  
   if (!success) {
     exit(-1);
   }
+  
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -129,12 +134,24 @@ start_process (void *pcb_)
 int
 process_wait (tid_t child_tid) 
 {
-    //struct list_elem *it;
-    //struct list_elem *next;
-    //struct thread* cur = thread_current();
-    //for (it=list_begin(&cur->children); it != list_end(&cur->children); it = list_next(it)) {
-    for (int i=0; i<500000000; i++){}	     
-    return -1;
+ /*   struct list_elem *it;
+    struct list_elem *next;
+    struct thread* cur = thread_current();
+    struct list children = cur->children;
+    struct process_control_block *child_pcb = NULL;
+    for (it=list_begin(&children); it != list_end(&children); it = list_next(it)) {
+	    struct process_control_block *pcb = list_entry(it, struct process_control_block, elem);
+	    if (pcb->pid == child_tid) {
+		    child_pcb = pcb;
+		    break;
+ 	    }
+    }
+
+    if (child_pcb == NULL) {
+    	return -1;
+    }*/
+   for (int i=0; i<900000000; i++) {}
+   return -1;
 }
 /* Free the current process's resources. */
 void
@@ -159,6 +176,7 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
 }
 
 /* Sets up the CPU for running user code in the current
