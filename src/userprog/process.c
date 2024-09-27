@@ -49,6 +49,7 @@ process_execute (const char *file_name)
   pinfo->fn_copy = fn_copy;
   struct thread* cur = thread_current();
   pinfo->parent = cur;
+  pinfo->self = NULL;
   /* Loading in progress */
   cur->load_status = LOAD_INIT;
  
@@ -63,14 +64,15 @@ process_execute (const char *file_name)
   file_name = strtok_r(fn_copy_copy, " ", &save_ptr);
   /* Wait until thread is actually created */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, pinfo);
-  sema_down(&cur->load_sema);
  
-  palloc_free_page(fn_copy_copy);
+  sema_down(&cur->load_sema);
   /* failed to open file */
   if (tid == TID_ERROR) {
     palloc_free_page (pinfo);
+    palloc_free_page(fn_copy_copy);
+  } else {
+    list_push_back(&(cur->children), &(pinfo->self->child_elem));
   }
-
   return tid;
 }
 
@@ -101,26 +103,27 @@ start_process (void *pinfo_)
   */
   struct thread *cur = thread_current();
   cur->tid = success ? (pid_t)(cur->tid) : TID_ERROR;
-  cur->parent = pinfo->parent;
-
+  cur->parent = parent;
   if (parent != NULL) {
       parent->load_status = success ? LOAD_FAIL : LOAD_SUCCESS;
       /* Process is now created or failed to do so; parent can do what it wants to do */
+      if (success) {
+      	pinfo->self = cur;
+      }
       sema_up(&(parent->load_sema));
   }
   
   if (!success) {
     exit(-1);
-  }
-  
+  }  
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
      arguments on the stack in the form of a `struct intr_frame',
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
-  asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
-  NOT_REACHED ();
+   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
+   NOT_REACHED ();
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
@@ -135,31 +138,70 @@ start_process (void *pinfo_)
 int
 process_wait (tid_t child_tid) 
 {
- /*   struct list_elem *it;
+    struct list_elem *it;
     struct list_elem *next;
     struct thread* cur = thread_current();
-    struct list children = cur->children;
-    struct process_control_block *child_pcb = NULL;
-    for (it=list_begin(&children); it != list_end(&children); it = list_next(it)) {
-	    struct process_control_block *pcb = list_entry(it, struct process_control_block, elem);
-	    if (pcb->pid == child_tid) {
-		    child_pcb = pcb;
+    struct list *children = &cur->children;
+    struct thread *child = NULL;
+    if (child_tid == NULL) {
+	    return -1;
+    }
+    /* there is no lambda function in c so we do this every time */
+    for (it=list_begin(children); it != list_end(children); it = list_next(it)) {
+	    struct thread *t = list_entry(it, struct thread, child_elem);
+	    if (t->tid == child_tid) {
+		    child = t;
 		    break;
  	    }
     }
-
-    if (child_pcb == NULL) {
+    /*
+     * 1. Could not find child process
+     * 2. Parent already waited the child
+     */
+    if (child == NULL) {
+       return -1;
+    };
+    if (child->flags & O_PARENT_WAITING) {
     	return -1;
-    }*/
-   for (int i=0; i<900000000; i++) {}
-   return -1;
+    } else {
+	/* Parent will wait */
+	child->flags |= O_PARENT_WAITING;
+    }
+    
+    /* Make parent wait */
+    if (!(child->flags & O_EXITED)) {
+	sema_down(&(child->wait_sema));
+    }
+    
+    int ret = child -> exit_status;
+    return ret;
 }
 /* Free the current process's resources. */
 void
 process_exit (void)
 {
-  struct thread *cur = thread_current ();
-  uint32_t *pd;
+   struct thread *cur = thread_current ();
+   /* Clean up the children threads */
+   struct list *children = &cur->children;
+   while(!list_empty(children)) {
+   	struct list_elem *el = list_pop_back(children);
+	struct thread *t = list_entry(el, struct thread, child_elem);
+	if (t->flags & O_EXITED) {
+	   palloc_free_page(t);
+	} else {
+	   t->flags |= O_ORPHAN;
+	   t->parent = NULL;
+	}
+   }
+
+   /* We're done with this process */
+   cur->flags |= O_EXITED;
+   sema_up(&cur->wait_sema);
+
+   if (cur->flags&O_ORPHAN) {
+      palloc_free_page(&cur);
+   }
+   uint32_t *pd;
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

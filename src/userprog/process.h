@@ -11,6 +11,7 @@ typedef int pid_t;
 struct process_info {
 	char *fn_copy;
 	struct thread* parent;
+	struct thread* self;
 };
 
 tid_t process_execute (const char *file_name);

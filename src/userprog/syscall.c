@@ -132,7 +132,7 @@ exit (int status)
 int
 wait (pid_t pid)
 {
-	process_wait(pid);
+	return process_wait(pid);
 }
 
 /* 

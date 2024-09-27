@@ -1,4 +1,5 @@
 #include "userprog/exception.h"
+#include "userprog/syscall.h"
 #include <inttypes.h>
 #include <stdio.h>
 #include "userprog/gdt.h"
@@ -167,10 +168,7 @@ page_fault (struct intr_frame *f)
   kill(f);
 }
 
-	
-/* This function should be same as void exit(int status)
- * in syscall.c
- */	
+/* See the original function in syscall.c */
 void
 exit (int status)
 {

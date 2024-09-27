@@ -30,6 +30,10 @@ typedef int tid_t;
 #define LOAD_INIT 0
 #define LOAD_SUCCESS 1
 
+#define O_PARENT_WAITING 0x01
+#define O_EXITED 0x02
+#define O_ORPHAN 0x04
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -104,19 +108,20 @@ struct thread
 
     uint32_t *pagedir;                  /* Page directory. */
     struct thread *parent;
-    int exit_status;
-
+    int exit_status;	
+    /*
+     * O_PARENT_WAITING(0x01): Parent is waiting
+     * O_EXITED(0x02): Current process has been exited
+     * O_ORPHAN(0x04): Current process is an orphan
+     */
+    uint8_t flags;
     /* child threads */
-    int load_status;
+    int8_t load_status;
     struct semaphore load_sema;
 
     struct list children;
     struct list_elem child_elem;
     struct semaphore wait_sema;
-    /* Used for waiting */
-    struct lock wait_lock;
-    struct condition wait_cond;
-
     /* According to Pintos Manual 3.4.2. System Calls FAQ,
      * the usage of struct file *fd is discrouaged.
      * but for now, we just choose to use it.
