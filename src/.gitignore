@@ -5,6 +5,7 @@ tags
 .vimrc
 /build/
 /tests/
+/tests/**/*
 *.o
 *.out
 *.exe

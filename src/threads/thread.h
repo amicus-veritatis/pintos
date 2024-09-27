@@ -122,6 +122,7 @@ struct thread
     struct list children;
     struct list_elem child_elem;
     struct semaphore wait_sema;
+    struct semaphore remove_sema;
     /* According to Pintos Manual 3.4.2. System Calls FAQ,
      * the usage of struct file *fd is discrouaged.
      * but for now, we just choose to use it.

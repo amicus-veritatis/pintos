@@ -171,6 +171,8 @@ process_wait (tid_t child_tid)
     /* Make parent wait */
     if (!(child->flags & O_EXITED)) {
 	sema_down(&(child->wait_sema));
+	list_remove(&(child->child_elem));
+	sema_up(&(child->remove_sema));
     }
     
     int ret = child -> exit_status;
@@ -197,7 +199,7 @@ process_exit (void)
    /* We're done with this process */
    cur->flags |= O_EXITED;
    sema_up(&cur->wait_sema);
-
+   sema_down(&cur->remove_sema);
    if (cur->flags&O_ORPHAN) {
       palloc_free_page(&cur);
    }
