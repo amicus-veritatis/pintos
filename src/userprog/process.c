@@ -38,17 +38,17 @@ process_execute (const char *file_name)
         return TID_ERROR;
   }
   strlcpy (fn_copy, file_name, PGSIZE);
-  /* Make a pcb and put copy of FILE_NAME inside pcb.
+  /* Make a pinfo and put copy of FILE_NAME inside pinfo.
      Otherwise there's a race between the caller and load(). */
 
-  struct process_control_block *pcb = palloc_get_page(0);
-  if (pcb == NULL) {
+  struct process_info *pinfo = palloc_get_page(0);
+  if (pinfo == NULL) {
 	palloc_free_page(fn_copy);
 	return TID_ERROR;
   }; 
-  pcb->fn_copy = fn_copy;
+  pinfo->fn_copy = fn_copy;
   struct thread* cur = thread_current();
-  pcb->parent = cur;
+  pinfo->parent = cur;
   /* Loading in progress */
   cur->load_status = LOAD_INIT;
  
@@ -56,19 +56,19 @@ process_execute (const char *file_name)
   char *fn_copy_copy = palloc_get_page (0);
   if (fn_copy_copy == NULL) {
 	  palloc_free_page (fn_copy);
-	  palloc_free_page (pcb);
+	  palloc_free_page (pinfo);
 	  return TID_ERROR;
   }
   strlcpy(fn_copy_copy, file_name, PGSIZE);
   file_name = strtok_r(fn_copy_copy, " ", &save_ptr);
   /* Wait until thread is actually created */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, pcb);
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, pinfo);
   sema_down(&cur->load_sema);
  
   palloc_free_page(fn_copy_copy);
   /* failed to open file */
   if (tid == TID_ERROR) {
-    palloc_free_page (pcb);
+    palloc_free_page (pinfo);
   }
 
   return tid;
@@ -77,12 +77,12 @@ process_execute (const char *file_name)
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *pcb_)
+start_process (void *pinfo_)
 {
   struct intr_frame if_;
   bool success;
-  struct process_control_block *pcb = pcb_;
-  char *file_name = pcb->fn_copy;
+  struct process_info *pinfo = pinfo_;
+  char *file_name = pinfo->fn_copy;
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -91,7 +91,7 @@ start_process (void *pcb_)
 
   /* load the binary. */
   success = load (file_name, &if_.eip, &if_.esp);
-  struct thread* parent = pcb->parent;
+  struct thread* parent = pinfo->parent;
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -100,8 +100,9 @@ start_process (void *pcb_)
   * not to reuse it.
   */
   struct thread *cur = thread_current();
-  pcb->pid = success ? (pid_t)(cur->tid) : TID_ERROR;
-  cur->pcb = pcb;
+  cur->tid = success ? (pid_t)(cur->tid) : TID_ERROR;
+  cur->parent = pinfo->parent;
+
   if (parent != NULL) {
       parent->load_status = success ? LOAD_FAIL : LOAD_SUCCESS;
       /* Process is now created or failed to do so; parent can do what it wants to do */

@@ -30,13 +30,6 @@ typedef int tid_t;
 #define LOAD_INIT 0
 #define LOAD_SUCCESS 1
 
-struct process_control_block {
-	int pid;
-	const char* fn_copy;
-	struct thread* parent;
-	
-};
-
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -110,7 +103,7 @@ struct thread
     /* Owned by userprog/process.c. */
 
     uint32_t *pagedir;                  /* Page directory. */
-    struct process_control_block *pcb;
+    struct thread *parent;
     int exit_status;
 
     /* child threads */

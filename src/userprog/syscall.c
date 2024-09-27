@@ -26,10 +26,8 @@ static void seek (int, unsigned);
 static unsigned tell (int);
 static void close (int);
 static pid_t exec(const char* cmd_line);
+
 /* End of system call functions */
-
-struct lock fs_lock;
-
 void
 syscall_init () 
 {

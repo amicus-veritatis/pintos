@@ -4,6 +4,7 @@
 #define SENTINEL 1
 typedef int pid_t; 
 void syscall_init (void);
+struct lock fs_lock;
 
 
 #endif /* userprog/syscall.h */

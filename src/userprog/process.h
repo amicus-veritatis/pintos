@@ -7,6 +7,12 @@
 #define SENTINEL 1
 #define WORD_SIZE sizeof(uint32_t)
 typedef int pid_t;
+
+struct process_info {
+	char *fn_copy;
+	struct thread* parent;
+};
+
 tid_t process_execute (const char *file_name);
 int process_wait (tid_t);
 void process_exit (void);
