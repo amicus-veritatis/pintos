@@ -24,6 +24,24 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 #define FD_MAX_SIZE 128
+
+/* load status. */
+#define LOAD_FAIL -1
+#define LOAD_INIT 0
+#define LOAD_SUCCESS 1
+
+struct process_control_block {
+	int pid;
+	const char* fn_copy;
+	struct thread* parent;
+	int load_status;
+	int exit_status;
+	int wait;
+	int exit;
+	struct semaphore load_sema;
+	struct semaphore wait_sema;
+};
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -97,20 +115,10 @@ struct thread
     /* Owned by userprog/process.c. */
 
     uint32_t *pagedir;                  /* Page directory. */
-    struct thread* parent; 
+    struct process_control_block *pcb;
     /* child threads */
     struct list children;
     struct list_elem child_elem;
-    /* 
-     * -1: failed
-     *  0: init status
-     *  1: success
-     */
-    int8_t load_status; 
-    /* Use lock instead of semaphore */
-    struct lock child_lock;
-
-   int exit_status;
     /* According to Pintos Manual 3.4.2. System Calls FAQ,
      * the usage of struct file *fd is discrouaged.
      * but for now, we just choose to use it.

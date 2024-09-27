@@ -8,6 +8,7 @@
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
+#include "userprog/syscall.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -31,33 +32,56 @@ process_execute (const char *file_name)
   char *fn_copy;
   tid_t tid;
   char *save_ptr = NULL;
-  /* Make a copy of FILE_NAME.
-     Otherwise there's a race between the caller and load(). */
+
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL) {
-  	return TID_ERROR;
+        return TID_ERROR;
   }
   strlcpy (fn_copy, file_name, PGSIZE);
+  /* Make a pcb and put copy of FILE_NAME inside pcb.
+     Otherwise there's a race between the caller and load(). */
 
+  struct process_control_block *pcb = palloc_get_page(0);
+  if (pcb == NULL) {
+	palloc_free_page(fn_copy);
+	return TID_ERROR;
+  }; 
+  pcb->fn_copy = fn_copy;
+  pcb->parent = thread_current();
+  pcb->exit_status = -1;
+  /* Loading in progress */
+  struct process_control_block *parent_pcb = pcb->parent->pcb;
+  parent_pcb->load_status = LOAD_INIT;
+ 
   /* Create a new thread to execute FILE_NAME. */
-  file_name = strtok_r(file_name, " ", &save_ptr);
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  char *fn_copy_copy = palloc_get_page (0);
+   if (fn_copy_copy == NULL) {
+	  palloc_free_page (fn_copy);
+	  palloc_free_page (pcb);
+	  return TID_ERROR;
+  }
+  strlcpy(fn_copy_copy, file_name, PGSIZE);
+  file_name = strtok_r(fn_copy_copy, " ", &save_ptr); 
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, pcb);
+  palloc_free_page(fn_copy_copy);
   /* failed to open file */
   if (tid == TID_ERROR) {
-    palloc_free_page (fn_copy);
+    palloc_free_page (pcb);
   }
+  sema_down(&pcb->load_sema);
+  
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *pcb_)
 {
-  char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
-
+  struct process_control_block *pcb = pcb_;
+  char *file_name = pcb->fn_copy;
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -66,19 +90,22 @@ start_process (void *file_name_)
 
   /* load the binary. */
   success = load (file_name, &if_.eip, &if_.esp);
-
-  struct thread *parent;
-  parent = thread_current()->parent;
+  struct thread* parent = pcb->parent;
   if (parent != NULL) {
-    lock_acquire(&parent->child_lock);
-    parent->load_status = success ? -1 : 1;
-    lock_release(&parent->child_lock);
+  	parent->pcb->load_status = success ? LOAD_FAIL : LOAD_SUCCESS;
   }
-
   /* If load failed, quit. */
   palloc_free_page (file_name);
+
+ /* if TID_ERROR is ((tid_t) -1), then there's no reason 
+  * not to reuse it.
+  */
+  struct thread *cur = thread_current();
+  pcb->pid = success ? (int)(cur->tid) : TID_ERROR;
+  cur->pcb = pcb;
+  sema_up(&pcb->load_sema);
   if (!success) {
-    thread_exit ();
+    exit(-1);
   }
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -100,12 +127,15 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-    for (int i=0;i<500000000;i++){}
+    //struct list_elem *it;
+    //struct list_elem *next;
+    //struct thread* cur = thread_current();
+    //for (it=list_begin(&cur->children); it != list_end(&cur->children); it = list_next(it)) {
+    for (int i=0; i<500000000; i++){}	     
     return -1;
 }
-
 /* Free the current process's resources. */
 void
 process_exit (void)

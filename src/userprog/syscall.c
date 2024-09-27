@@ -1,4 +1,5 @@
 #include "userprog/syscall.h"
+#include "userprog/process.h"
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
@@ -125,7 +126,7 @@ void
 exit (int status)
 {
 	struct thread* cur = thread_current();
-	cur -> exit_status = status;
+	cur -> pcb -> exit_status = status;
 	printf("%s: exit(%d)\n", thread_name(), status);
 	thread_exit();
 }
@@ -197,9 +198,12 @@ halt ()
 pid_t
 exec (const char *cmd_line)
 {
-	lock_acquire(&fs_lock);
 	check_address(cmd_line);
-	tid_t ret = process_execute(cmd_line);
+	char *cmd_line_copy = palloc_get_page(0);
+	if (cmd_line_copy == NULL) { exit(-1); }
+	strlcpy(cmd_line_copy, cmd_line, PGSIZE);
+	lock_acquire(&fs_lock);
+	tid_t ret = process_execute(cmd_line_copy);
 	lock_release(&fs_lock);
 	return ret;
 }
