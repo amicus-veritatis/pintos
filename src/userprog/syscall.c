@@ -1,7 +1,7 @@
 #include "userprog/syscall.h"
-#include "userprog/process.h"
 #include <stdio.h>
 #include <syscall-nr.h>
+#include "userprog/process.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/synch.h"
@@ -26,8 +26,8 @@ static void seek (int, unsigned);
 static unsigned tell (int);
 static void close (int);
 static pid_t exec(const char* cmd_line);
-
 /* End of system call functions */
+struct lock fs_lock;
 void
 syscall_init () 
 {
@@ -89,6 +89,12 @@ syscall_handler (struct intr_frame *f)
 		case SYS_ISDIR:
 		case SYS_INUMBER:
 			break;
+		case SYS_FIBONACCI:
+			f->eax = fibonacci((int) esp[1]);
+			break;
+		case SYS_MAX_OF_FOUR:
+			f->eax = max_of_four_int((int) esp[1], (int) esp[2], (int) esp[3], (int) esp[4]);
+			break;
 		default:
 			exit(-1);
 			break;
@@ -125,6 +131,7 @@ exit (int status)
 {
 	struct thread* cur = thread_current();
 	cur -> exit_status = status;
+	cur -> flags |= O_EXITED;
 	printf("%s: exit(%d)\n", thread_name(), status);
 	thread_exit();
 }
@@ -203,8 +210,40 @@ exec (const char *cmd_line)
 	lock_acquire(&fs_lock);
 	tid_t ret = process_execute(cmd_line_copy);
 	lock_release(&fs_lock);
+	palloc_free_page(cmd_line_copy);
 	if (ret == TID_ERROR) {
 		return -1;
 	}
 	return ret;
 }
+
+/* Simple iterative implementation */	
+int
+fibonacci (int n)
+{
+        if (n<0) {
+          exit (-1);
+        }
+        else if (n<=1) {
+          return n;
+        }
+
+        int k = 0;
+        int p = 1;
+        int q = 0;
+        for (int i = 2; i<=n; i++) {
+            k = p + q;
+            q = p;
+            p = k;
+        }
+        return k;
+}
+int
+max_of_four_int (int a, int b, int c, int d) {
+        int ab, cd;
+        ab = a > b ? a : b;
+        cd = c > d ? c : d;
+        return ab > cd ? ab : cd;
+}
+
+

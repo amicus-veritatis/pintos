@@ -64,13 +64,16 @@ process_execute (const char *file_name)
   file_name = strtok_r(fn_copy_copy, " ", &save_ptr);
   /* Wait until thread is actually created */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, pinfo);
- 
+
   sema_down(&cur->load_sema);
+  if (cur->load_status == LOAD_FAIL) {
+    tid = TID_ERROR;
+  }
   /* failed to open file */
   if (tid == TID_ERROR) {
     palloc_free_page (pinfo);
     palloc_free_page(fn_copy_copy);
-  } else {
+  } else if (pinfo->self != NULL) {
     list_push_back(&(cur->children), &(pinfo->self->child_elem));
   }
   return tid;
@@ -85,6 +88,7 @@ start_process (void *pinfo_)
   bool success;
   struct process_info *pinfo = pinfo_;
   char *file_name = pinfo->fn_copy;
+  struct thread *cur = thread_current();
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -93,29 +97,25 @@ start_process (void *pinfo_)
 
   /* load the binary. */
   success = load (file_name, &if_.eip, &if_.esp);
+
   struct thread* parent = pinfo->parent;
-
-  /* If load failed, quit. */
-  palloc_free_page (file_name);
-
  /* if TID_ERROR is ((tid_t) -1), then there's no reason 
   * not to reuse it.
   */
-  struct thread *cur = thread_current();
   cur->tid = success ? (pid_t)(cur->tid) : TID_ERROR;
   cur->parent = parent;
   if (parent != NULL) {
-      parent->load_status = success ? LOAD_FAIL : LOAD_SUCCESS;
+      /* If load () failed, inform the parent */
+      parent->load_status = success ? LOAD_SUCCESS : LOAD_FAIL;
       /* Process is now created or failed to do so; parent can do what it wants to do */
       if (success) {
       	pinfo->self = cur;
       }
       sema_up(&(parent->load_sema));
   }
-  
-  if (!success) {
-    exit(-1);
-  }  
+
+  palloc_free_page (file_name);
+
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -139,10 +139,10 @@ int
 process_wait (tid_t child_tid) 
 {
     struct list_elem *it;
-    struct list_elem *next;
     struct thread* cur = thread_current();
     struct list *children = &cur->children;
     struct thread *child = NULL;
+    /* if TID is invalid */
     if (child_tid == NULL) {
 	    return -1;
     }
@@ -155,27 +155,24 @@ process_wait (tid_t child_tid)
  	    }
     }
     /*
-     * 1. Could not find child process
+     * 1. There is no child process with matching tid.
      * 2. Parent already waited the child
      */
-    if (child == NULL) {
-       return -1;
-    };
-    if (child->flags & O_PARENT_WAITING) {
+
+    if (child == NULL || (child->flags & O_PARENT_WAITING) != 0) {
     	return -1;
     } else {
 	/* Parent will wait */
 	child->flags |= O_PARENT_WAITING;
     }
-    
+    int ret;
     /* Make parent wait */
-    if (!(child->flags & O_EXITED)) {
+    if ((child->flags & O_EXITED) == 0) {
 	sema_down(&(child->wait_sema));
-	list_remove(&(child->child_elem));
-	sema_up(&(child->remove_sema));
     }
-    
-    int ret = child -> exit_status;
+    ret = child -> exit_status;
+    list_remove(&(child->child_elem));
+    sema_up(&(child->remove_sema));
     return ret;
 }
 /* Free the current process's resources. */
@@ -188,21 +185,14 @@ process_exit (void)
    while(!list_empty(children)) {
    	struct list_elem *el = list_pop_back(children);
 	struct thread *t = list_entry(el, struct thread, child_elem);
-	if (t->flags & O_EXITED) {
-	   palloc_free_page(t);
+	if ((t->flags & O_EXITED) != 0) {
 	} else {
 	   t->flags |= O_ORPHAN;
 	   t->parent = NULL;
 	}
    }
 
-   /* We're done with this process */
-   cur->flags |= O_EXITED;
-   sema_up(&cur->wait_sema);
-   sema_down(&cur->remove_sema);
-   if (cur->flags&O_ORPHAN) {
-      palloc_free_page(&cur);
-   }
+
    uint32_t *pd;
 
   /* Destroy the current process's page directory and switch back
@@ -221,7 +211,13 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-
+   /* We're done with this process */
+   cur->flags |= O_EXITED;
+   sema_up(&(cur->wait_sema));
+   sema_down(&(cur->load_sema));
+   //if ((cur->flags&O_ORPHAN) != 0) {
+   //   palloc_free_page(&cur);
+   //}
 }
 
 /* Sets up the CPU for running user code in the current
