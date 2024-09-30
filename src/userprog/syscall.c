@@ -26,8 +26,12 @@ static void seek (int, unsigned);
 static unsigned tell (int);
 static void close (int);
 static pid_t exec(const char* cmd_line);
+static int fibonacci (int n);
+static int max_of_four_int (int a, int b, int c, int d);
 /* End of system call functions */
+
 struct lock fs_lock;
+
 void
 syscall_init () 
 {
@@ -42,10 +46,9 @@ syscall_handler (struct intr_frame *f)
 	uint32_t* esp = (uint32_t*) f->esp;
 	check_address(esp);
 	int syscall_number = *esp;
-	// printf("[SYS_CALL] ");	
 	switch (syscall_number) {
 		case SYS_HALT:
-			// printf("HALT!\n");
+			halt();
 			break;
 		case SYS_EXIT:
 			/* Never trust anything */
@@ -77,17 +80,33 @@ syscall_handler (struct intr_frame *f)
 			f->eax = write((int) esp[1], (const void *) esp[2], (int) esp[3]);
 			break;
 		case SYS_SEEK:
+			printf("SEEK!\n");
+			break;
 		case SYS_TELL:
+			printf("TELL!\n");
+			break;
 		case SYS_CLOSE:
 			break;
 		case SYS_MMAP:
+			printf("MMAP!\n");
+			break;
 		case SYS_MUNMAP:
+			printf("MUNMAP!\n");
 			break;
 		case SYS_CHDIR:
+			printf("CHDIR!\n");
+			break;
 		case SYS_MKDIR:
+			printf("MKDIR!\n");
+			break;
 		case SYS_READDIR:
+			printf("READDIR!\n");
+			break;
 		case SYS_ISDIR:
+			printf("ISDIR!\n");
+			break;
 		case SYS_INUMBER:
+			printf("INUMBER!\n");
 			break;
 		case SYS_FIBONACCI:
 			f->eax = fibonacci((int) esp[1]);
@@ -158,7 +177,7 @@ write(int fd, const void *buffer, unsigned size)
 	} 
 	else if (fd > STDERR_FILENO && fd < FD_MAX_SIZE) {
 		/* fprint has not been implemented yet! */
-		printf("File write is not implemented yet\n");
+		printf("[ERROR] File write is not implemented yet\n");
 		return -1;
 	}
 }
@@ -204,16 +223,21 @@ pid_t
 exec (const char *cmd_line)
 {
 	check_address(cmd_line);
+	/* Avoid race condition. */
 	char *cmd_line_copy = palloc_get_page(0);
 	if (cmd_line_copy == NULL) { exit(-1); }
 	strlcpy(cmd_line_copy, cmd_line, PGSIZE);
+
 	lock_acquire(&fs_lock);
 	tid_t ret = process_execute(cmd_line_copy);
 	lock_release(&fs_lock);
+
 	palloc_free_page(cmd_line_copy);
+
 	if (ret == TID_ERROR) {
 		return -1;
 	}
+
 	return ret;
 }
 
