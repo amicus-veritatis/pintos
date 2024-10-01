@@ -41,19 +41,24 @@ process_execute (const char *file_name)
   /* Make a pinfo and put copy of FILE_NAME inside pinfo.
      Otherwise there's a race between the caller and load(). */
 
+  /* Information about child process. */
   struct process_info *pinfo = palloc_get_page(0);
   if (pinfo == NULL) {
 	palloc_free_page(fn_copy);
 	return TID_ERROR;
   }; 
   pinfo->fn_copy = fn_copy;
+
+  /* The process calling the exec() is said to be a parent process.
+   * Thus, it's reasonable to assume that current running process is the
+   * parent process. */
   struct thread* cur = thread_current();
   pinfo->parent = cur;
   pinfo->self = NULL;
   /* Loading in progress */
   cur->load_status = LOAD_INIT;
- 
-  /* Create a new thread to execute FILE_NAME. */
+
+  /* Avoid race condition */ 
   char *fn_copy_copy = palloc_get_page (0);
   if (fn_copy_copy == NULL) {
 	  palloc_free_page (fn_copy);
@@ -62,9 +67,10 @@ process_execute (const char *file_name)
   }
   strlcpy(fn_copy_copy, file_name, PGSIZE);
   file_name = strtok_r(fn_copy_copy, " ", &save_ptr);
-  /* Wait until thread is actually created */
+  /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, pinfo);
 
+  /* Wait until thread is actually created */
   sema_down(&cur->load_sema);
   if (cur->load_status == LOAD_FAIL) {
     tid = TID_ERROR;
@@ -88,6 +94,7 @@ start_process (void *pinfo_)
   bool success;
   struct process_info *pinfo = pinfo_;
   char *file_name = pinfo->fn_copy;
+  /* A new thread is already created and running via thread_create() */
   struct thread *cur = thread_current();
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -99,9 +106,7 @@ start_process (void *pinfo_)
   success = load (file_name, &if_.eip, &if_.esp);
 
   struct thread* parent = pinfo->parent;
- /* if TID_ERROR is ((tid_t) -1), then there's no reason 
-  * not to reuse it.
-  */
+  /* Common sense. */
   cur->tid = success ? (pid_t)(cur->tid) : TID_ERROR;
   cur->parent = parent;
   if (parent != NULL) {
@@ -111,6 +116,7 @@ start_process (void *pinfo_)
       if (success) {
       	pinfo->self = cur;
       }
+      /* The parent process is waiting... */
       sema_up(&(parent->load_sema));
   }
 
@@ -154,9 +160,10 @@ process_wait (tid_t child_tid)
 		    break;
  	    }
     }
+
     /*
      * 1. There is no child process with matching tid.
-     * 2. Parent already waited the child
+     * 2. Parent already called wait() on the child
      */
 
     if (child == NULL || (child->flags & O_PARENT_WAITING) != 0) {
@@ -186,6 +193,7 @@ process_exit (void)
    	struct list_elem *el = list_pop_back(children);
 	struct thread *t = list_entry(el, struct thread, child_elem);
 	if ((t->flags & O_EXITED) != 0) {
+	   palloc_free_page(t);
 	} else {
 	   t->flags |= O_ORPHAN;
 	   t->parent = NULL;
@@ -213,11 +221,11 @@ process_exit (void)
     }
    /* We're done with this process */
    cur->flags |= O_EXITED;
+
+   /* Make this process actually die, while preventing
+    * it from generating another process. */
    sema_up(&(cur->wait_sema));
    sema_down(&(cur->load_sema));
-   //if ((cur->flags&O_ORPHAN) != 0) {
-   //   palloc_free_page(&cur);
-   //}
 }
 
 /* Sets up the CPU for running user code in the current
