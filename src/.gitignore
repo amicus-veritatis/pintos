@@ -8,7 +8,7 @@ tests/
 *.o
 *.out
 *.exe
-
+*.docx
 # 컴파일러 생성 파일
 *.d
 *.a
