@@ -9,7 +9,9 @@
 #include "process.h"
 #include "devices/input.h"
 #include "userprog/pagedir.h"
-
+#include "filesys/file.h"
+#include "filesys/filesys.h"
+#include "filesys/directory.h"
 static void syscall_handler (struct intr_frame *);
 
 /* System call functions */
@@ -68,7 +70,7 @@ syscall_handler (struct intr_frame *f)
 			printf("REMOVE!\n");
 			break;
 		case SYS_OPEN:
-			printf("OPEN\n");
+			f->eax = open((const char *) esp[1]);
 			break;
 		case SYS_FILESIZE:
 			printf("FILESIZE\n");
@@ -127,6 +129,13 @@ is_valid_user_vaddr (const void* addr){
 	return addr != NULL && is_user_vaddr(addr);
 }
 
+static bool
+is_valid_fd_num (const int fd_num) {
+	struct thread *t = thread_current();
+	struct file *f = t->fd[fd_num];
+	return f == NULL;
+}
+
 /* Two conditions that terminate the process
  * 1. addr is not a valid user vaddr
  * 2. Virtual memory related
@@ -137,6 +146,11 @@ void check_address(const void *addr) {
 	} 
 }
 
+void check_fd_num (const int fd) {
+	if (!is_valid_fd_num(fd)) {
+		exit(-1);
+	}
+}
 /* 
  * Get current thread and shut down it.
  * Terminates the current user program,
@@ -161,6 +175,30 @@ wait (pid_t pid)
 	return process_wait(pid);
 }
 
+int
+open (const char* file_name)
+{
+	// Do not trust anything
+	check_address(file_name);
+	lock_acquire(&fs_lock);
+	struct file *f = filesys_open(file_name);
+	lock_release(&fs_lock);
+	check_address(f);
+	int cur_fd;
+	for (cur_fd = STDERR_FILENO + 1; cur_fd < FD_MAX_SIZE; cur_fd++) {
+		if (is_valid_fd_num) {
+			break;
+		}
+	}
+	check_fd_num(cur_fd);
+	if (strcmp(thread_name(), file_name) == 0) {
+		file_deny_write(f);
+	}
+	struct thread *t = thread_current();
+	t->fd[cur_fd] = f;
+	return cur_fd;
+}
+	
 /* 
  * return with -1 if user is either trying to
  * write into stdin or cause out-of-range error
@@ -201,10 +239,13 @@ int read(int fd, void *buffer, unsigned size) {
         	return size;	
 	} 
 	else if (fd > STDERR_FILENO && fd < FD_MAX_SIZE) {
-		/* fprint has not been implemented yet! */
-		printf("[ERROR] File read is not implemented yet\n");
-		return -1;
-	}	
+		check_fd_num(fd);
+		lock_acquire(&fs_lock);
+		struct thread *t = thread_current();
+		int f = file_read(t->fd[fd], buffer, size);
+		lock_release(&fs_lock);
+		return f;
+	}
 }
 
 /* See src/devicees/shutdown.c */

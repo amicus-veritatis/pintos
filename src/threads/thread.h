@@ -128,10 +128,11 @@ struct thread
      * but for now, we just choose to use it.
      * maybe needed to be refactored.
      */
-    struct file *fd[FD_MAX_SIZE]; /* file descriptor table. */
     
 #endif
 
+    struct file *fd[FD_MAX_SIZE]; /* file descriptor table. */
+    struct dir *cur_dir;
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
     
