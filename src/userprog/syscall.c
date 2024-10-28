@@ -203,7 +203,7 @@ open (const char* file_name)
 	check_address(f);
 	int cur_fd;
 	for (cur_fd = STDERR_FILENO + 1; cur_fd < FD_MAX_SIZE; cur_fd++) {
-		if (is_valid_fd_num) {
+		if (is_valid_fd_num(cur_fd)) {
 			break;
 		}
 	}
