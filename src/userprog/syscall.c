@@ -132,9 +132,7 @@ is_valid_user_vaddr (const void* addr){
 
 static bool
 is_valid_fd_num (const int fd_num) {
-	struct thread *t = thread_current();
-	struct file *f = t->fd[fd_num];
-	return f == NULL;
+	return fd_num >= MIN_FILENO && fd_num < FD_MAX_SIZE;
 }
 
 /* Two conditions that terminate the process
@@ -148,8 +146,7 @@ void check_address(const void *addr) {
 }
 
 void check_fd_num (const int fd) {
-	if (!is_valid_fd_num(fd) || fd < MIN_FILENO || fd >= FD_MAX_SIZE) {
-		lock_release(&fs_lock);
+	if (!is_valid_fd_num(fd)) {
 		exit(-1);
 	}
 }
@@ -201,23 +198,23 @@ open (const char* file_name)
 	lock_acquire(&fs_lock);
 	struct file *f = filesys_open(file_name);
 	if (f == NULL) {
-		exit(-1);
+		lock_release(&fs_lock);
+		return -1;
 	}
 	int cur_fd;
 	for (cur_fd = MIN_FILENO; cur_fd < FD_MAX_SIZE; cur_fd++) {
-		if (is_valid_fd_num(cur_fd)) {
+		if (thread_current()->fd[cur_fd] == NULL) {
 			break;
 		}
 	}
-	if (cur_fd == FD_MAX_SIZE) {
+	if (cur_fd >= FD_MAX_SIZE) {
 		lock_release(&fs_lock);
 		return -1;
 	}
 	if (strcmp(thread_name(), file_name) == 0) {
 		file_deny_write(f);
 	}
-	struct thread *t = thread_current();
-	t->fd[cur_fd] = f;
+	thread_current()->fd[cur_fd] = f;
 	lock_release(&fs_lock);
 	return cur_fd;
 }
@@ -271,8 +268,9 @@ write (int fd, const void *buffer, unsigned size)
 		/* fprint has not been implemented yet! */
 		lock_acquire(&fs_lock);
 		struct thread *t = thread_current();
+		int ret = 0;
 		if (t->fd[fd] != NULL) {
-			int ret = file_write(t->fd[fd], buffer, size);
+			ret = file_write(t->fd[fd], buffer, size);
 		}
 		lock_release(&fs_lock);
 		return ret;
@@ -299,15 +297,17 @@ int read(int fd, void *buffer, unsigned size) {
         	return size;	
 	} 
 	else if (fd >= MIN_FILENO && fd < FD_MAX_SIZE) {
+		lock_acquire(&fs_lock);
 		struct thread *t = thread_current();
 		if (t->fd[fd] == NULL) {
+			lock_release(&fs_lock);
 			return -1;
 		}
-		lock_acquire(&fs_lock);
 		int f = file_read(t->fd[fd], buffer, size);
 		lock_release(&fs_lock);
 		return f;
 	}
+	return -1;
 }
 
 /* See src/devicees/shutdown.c */
