@@ -64,16 +64,16 @@ syscall_handler (struct intr_frame *f)
 			f->eax = wait((int) esp[1]);	
 			break;
 		case SYS_CREATE:
-			printf("CREATE!\n");
+			f->eax = create((const char *) esp[1], (unsigned) esp[2]);
 			break;
 		case SYS_REMOVE:
-			printf("REMOVE!\n");
+			f->eax = remove((const char *) esp[1]);
 			break;
 		case SYS_OPEN:
 			f->eax = open((const char *) esp[1]);
 			break;
 		case SYS_FILESIZE:
-			printf("FILESIZE\n");
+			f->eax = filesize((int) esp[1]);
 			break;
 		case SYS_READ:
 			f->eax = read((int) esp[1], (void *) esp[2], (int) esp[3]);
@@ -88,6 +88,7 @@ syscall_handler (struct intr_frame *f)
 			printf("TELL!\n");
 			break;
 		case SYS_CLOSE:
+			f->eax = close((int) esp[1]);
 			break;
 		case SYS_MMAP:
 			printf("MMAP!\n");
@@ -147,7 +148,7 @@ void check_address(const void *addr) {
 }
 
 void check_fd_num (const int fd) {
-	if (!is_valid_fd_num(fd)) {
+	if (!is_valid_fd_num(fd) && fd <= STDERR_FILENO && fd >= FD_MAX_SIZE) {
 		exit(-1);
 	}
 }
@@ -176,6 +177,22 @@ wait (pid_t pid)
 }
 
 int
+create (const char *file_name, unsigned size)
+{
+	// Do not trust anything
+	check_address(file_name);
+	return filesys_create(file_name, size);
+}
+
+int
+remove (const char *file_name)
+{
+	// Do not trust anything
+	check_address(file_name);
+	return filesys_remove(file_name);
+}
+
+int
 open (const char* file_name)
 {
 	// Do not trust anything
@@ -198,13 +215,23 @@ open (const char* file_name)
 	t->fd[cur_fd] = f;
 	return cur_fd;
 }
-	
+
+int
+filesize (int fd) {
+	check_fd_num(fd);
+	lock_acquire(&fs_lock);
+	struct thread *t = thread_current();
+	int ret = file_length(t-fd[fd]);
+	lock_release(&fs_lock);
+	return ret;
+}
+
 /* 
  * return with -1 if user is either trying to
  * write into stdin or cause out-of-range error
  */
 int
-write(int fd, const void *buffer, unsigned size)
+write (int fd, const void *buffer, unsigned size)
 {
 	check_address(buffer);
 	if (fd == STDIN_FILENO) {
@@ -215,10 +242,15 @@ write(int fd, const void *buffer, unsigned size)
 	} 
 	else if (fd > STDERR_FILENO && fd < FD_MAX_SIZE) {
 		/* fprint has not been implemented yet! */
-		printf("[ERROR] File write is not implemented yet\n");
-		return -1;
+		check_fd_num(fd);
+		lock_acquire(&fs_lock);
+		struct thread *t = thread_current();
+		int ret = file_write(t->fd[fd], buffer, size);
+		lock_release(&fs_lock);
+		return ret;
 	}
 }
+
 /* 
  * return with -1 if user is either trying to
  * read stdout  or cause out-of-range error
@@ -280,6 +312,18 @@ exec (const char *cmd_line)
 	}
 
 	return ret;
+}
+
+void
+close (int fd)
+{
+	check_fd_num(fd);
+	lock_acquire(&fs_lock);
+	struct thread *t = thread_current;
+	file_close(t->fd[fd]);
+	t->fd[fd] = NULL;
+	lock_release(&fs_release);
+	return 0;
 }
 
 /* Simple iterative implementation */	
