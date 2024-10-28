@@ -322,7 +322,7 @@ close (int fd)
 	struct thread *t = thread_current;
 	file_close(t->fd[fd]);
 	t->fd[fd] = NULL;
-	lock_release(&fs_release);
+	lock_release(&fs_lock);
 	return 0;
 }
 
