@@ -88,7 +88,7 @@ syscall_handler (struct intr_frame *f)
 			printf("TELL!\n");
 			break;
 		case SYS_CLOSE:
-			f->eax = close((int) esp[1]);
+			close((int) esp[1]);
 			break;
 		case SYS_MMAP:
 			printf("MMAP!\n");
@@ -176,7 +176,7 @@ wait (pid_t pid)
 	return process_wait(pid);
 }
 
-int
+bool
 create (const char *file_name, unsigned size)
 {
 	// Do not trust anything
@@ -184,7 +184,7 @@ create (const char *file_name, unsigned size)
 	return filesys_create(file_name, size);
 }
 
-int
+bool
 remove (const char *file_name)
 {
 	// Do not trust anything
@@ -221,7 +221,7 @@ filesize (int fd) {
 	check_fd_num(fd);
 	lock_acquire(&fs_lock);
 	struct thread *t = thread_current();
-	int ret = file_length(t-fd[fd]);
+	int ret = file_length(t->fd[fd]);
 	lock_release(&fs_lock);
 	return ret;
 }
