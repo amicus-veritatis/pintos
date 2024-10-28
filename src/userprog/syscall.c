@@ -209,7 +209,10 @@ open (const char* file_name)
 			break;
 		}
 	}
-	check_fd_num(cur_fd);
+	if (cur_fd == FD_MAX_SIZE) {
+		lock_release(&fs_lock);
+		return -1;
+	}
 	if (strcmp(thread_name(), file_name) == 0) {
 		file_deny_write(f);
 	}
@@ -266,10 +269,11 @@ write (int fd, const void *buffer, unsigned size)
 	} 
 	else if (fd >= MIN_FILENO && fd < FD_MAX_SIZE) {
 		/* fprint has not been implemented yet! */
-		check_fd_num(fd);
 		lock_acquire(&fs_lock);
 		struct thread *t = thread_current();
-		int ret = file_write(t->fd[fd], buffer, size);
+		if (t->fd[fd] != NULL) {
+			int ret = file_write(t->fd[fd], buffer, size);
+		}
 		lock_release(&fs_lock);
 		return ret;
 	}
@@ -295,13 +299,11 @@ int read(int fd, void *buffer, unsigned size) {
         	return size;	
 	} 
 	else if (fd >= MIN_FILENO && fd < FD_MAX_SIZE) {
-		check_fd_num(fd);
-		lock_acquire(&fs_lock);
 		struct thread *t = thread_current();
 		if (t->fd[fd] == NULL) {
-			lock_release(&fs_lock);
-			exit (-1);
+			return -1;
 		}
+		lock_acquire(&fs_lock);
 		int f = file_read(t->fd[fd], buffer, size);
 		lock_release(&fs_lock);
 		return f;
@@ -345,9 +347,12 @@ exec (const char *cmd_line)
 void
 close (int fd)
 {
-	check_fd_num(fd);
 	lock_acquire(&fs_lock);
 	struct thread *t = thread_current;
+	if (t->fd[fd] == NULL) {
+		lock_release(&fs_lock);
+		return -1;
+	}
 	file_close(t->fd[fd]);
 	t->fd[fd] = NULL;
 	lock_release(&fs_lock);
