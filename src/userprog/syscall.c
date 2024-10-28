@@ -82,10 +82,10 @@ syscall_handler (struct intr_frame *f)
 			f->eax = write((int) esp[1], (const void *) esp[2], (int) esp[3]);
 			break;
 		case SYS_SEEK:
-			printf("SEEK!\n");
+			seek((int) esp[1], (unsigned) esp[2]);
 			break;
 		case SYS_TELL:
-			printf("TELL!\n");
+			f->eax = tell((int) esp[1]);
 			break;
 		case SYS_CLOSE:
 			close((int) esp[1]);
@@ -148,7 +148,7 @@ void check_address(const void *addr) {
 }
 
 void check_fd_num (const int fd) {
-	if (!is_valid_fd_num(fd) && fd <= STDERR_FILENO && fd >= FD_MAX_SIZE) {
+	if (!is_valid_fd_num(fd) || fd <= STDERR_FILENO || fd >= FD_MAX_SIZE) {
 		exit(-1);
 	}
 }
@@ -197,9 +197,7 @@ open (const char* file_name)
 {
 	// Do not trust anything
 	check_address(file_name);
-	lock_acquire(&fs_lock);
 	struct file *f = filesys_open(file_name);
-	lock_release(&fs_lock);
 	check_address(f);
 	int cur_fd;
 	for (cur_fd = STDERR_FILENO + 1; cur_fd < FD_MAX_SIZE; cur_fd++) {
@@ -217,13 +215,28 @@ open (const char* file_name)
 }
 
 int
-filesize (int fd) {
+filesize (int fd)
+{
 	check_fd_num(fd);
 	lock_acquire(&fs_lock);
 	struct thread *t = thread_current();
 	int ret = file_length(t->fd[fd]);
 	lock_release(&fs_lock);
 	return ret;
+}
+
+void
+seek (int fd, unsigned position)
+{
+	check_fd_num(fd);
+	file_seek(thread_current()->fd[fd], position);
+}
+
+unsigned
+tell (fd)
+{
+	check_fd_num(fd);
+	return file_tell(thread_current()->fd[fd]);
 }
 
 /* 
