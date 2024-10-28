@@ -149,6 +149,10 @@ void check_fd_num (const int fd) {
 	if (!is_valid_fd_num(fd)) {
 		exit(-1);
 	}
+    	struct thread *t = thread_current();
+    	if (t->fd[fd] == NULL) {
+        	exit(-1);
+    	}
 }
 /* 
  * Get current thread and shut down it.
@@ -284,7 +288,7 @@ write (int fd, const void *buffer, unsigned size)
  */
 int read(int fd, void *buffer, unsigned size) {
 	check_address(buffer);
-	check_address(buffer+size);
+	check_address(buffer+size-1);
 	if (fd == STDOUT_FILENO) {
 		return -1;
 	} else if (fd == STDIN_FILENO) {
@@ -328,7 +332,9 @@ exec (const char *cmd_line)
 	check_address(cmd_line);
 	/* Avoid race condition. */
 	char *cmd_line_copy = palloc_get_page(0);
-	if (cmd_line_copy == NULL) { exit(-1); }
+	if (cmd_line_copy == NULL) { 
+		return -1;
+	}
 	strlcpy(cmd_line_copy, cmd_line, PGSIZE);
 
 	lock_acquire(&fs_lock);
@@ -348,15 +354,15 @@ void
 close (int fd)
 {
 	lock_acquire(&fs_lock);
-	struct thread *t = thread_current;
+	struct thread *t = thread_current();
 	if (t->fd[fd] == NULL) {
 		lock_release(&fs_lock);
-		return -1;
+		return;
 	}
 	file_close(t->fd[fd]);
 	t->fd[fd] = NULL;
 	lock_release(&fs_lock);
-	return 0;
+	return;
 }
 
 /* Simple iterative implementation */	

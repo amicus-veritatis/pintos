@@ -46,7 +46,7 @@ process_execute (const char *file_name)
   if (pinfo == NULL) {
 	palloc_free_page(fn_copy);
 	return TID_ERROR;
-  }; 
+  } 
   pinfo->fn_copy = fn_copy;
 
   /* The process calling the exec() is said to be a parent process.
@@ -69,19 +69,18 @@ process_execute (const char *file_name)
   file_name = strtok_r(fn_copy_copy, " ", &save_ptr);
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, pinfo);
-
   /* Wait until thread is actually created */
-  sema_down(&cur->load_sema);
+  sema_down(&(cur->load_sema)); 
   if (cur->load_status == LOAD_FAIL) {
     tid = TID_ERROR;
   }
-  /* failed to open file */
-  if (tid == TID_ERROR) {
-    palloc_free_page (pinfo);
-    palloc_free_page(fn_copy_copy);
-  } else if (pinfo->self != NULL) {
+  
+  if (pinfo->self != NULL) {
     list_push_back(&(cur->children), &(pinfo->self->child_elem));
   }
+  palloc_free_page(fn_copy);
+  palloc_free_page(fn_copy_copy);
+  palloc_free_page(pinfo);
   return tid;
 }
 
@@ -119,8 +118,6 @@ start_process (void *pinfo_)
       /* The parent process is waiting... */
       sema_up(&(parent->load_sema));
   }
-
-  palloc_free_page (file_name);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -189,8 +186,11 @@ process_exit (void)
    struct thread *cur = thread_current ();
    
    for (int fd=MIN_FILENO; fd<FD_MAX_SIZE; fd++) {
-    file_close(cur->fd[fd]);
-    cur->fd[fd] = NULL;
+    struct file *f = cur->fd[fd];
+    if (f != NULL) {
+	file_close(cur->fd[fd]);
+    	f= NULL;
+    }
    }
    /* Clean up the children threads */
    struct list *children = &cur->children;
