@@ -69,6 +69,12 @@ process_execute (const char *file_name)
   file_name = strtok_r(fn_copy_copy, " ", &save_ptr);
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, pinfo);
+  if (tid == TID_ERROR) {
+    palloc_free_page (fn_copy);
+    palloc_free_page (fn_copy_copy);
+    palloc_free_page (pinfo);
+    return TID_ERROR;
+  }
   /* Wait until thread is actually created */
   sema_down(&(cur->load_sema)); 
   if (cur->load_status == LOAD_FAIL) {
@@ -197,9 +203,7 @@ process_exit (void)
    while(!list_empty(children)) {
    	struct list_elem *el = list_pop_back(children);
 	struct thread *t = list_entry(el, struct thread, child_elem);
-	if ((t->flags & O_EXITED) != 0) {
-	   palloc_free_page(t);
-	} else {
+	if ((t->flags & O_EXITED) == 0) {
 	   t->flags |= O_ORPHAN;
 	   t->parent = NULL;
 	}
@@ -230,7 +234,7 @@ process_exit (void)
    /* Make this process actually die, while preventing
     * it from generating another process. */
    sema_up(&(cur->wait_sema));
-   sema_down(&(cur->load_sema));
+   sema_down(&(cur->remove_sema));
 }
 
 /* Sets up the CPU for running user code in the current
