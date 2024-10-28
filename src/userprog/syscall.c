@@ -148,7 +148,7 @@ void check_address(const void *addr) {
 }
 
 void check_fd_num (const int fd) {
-	if (!is_valid_fd_num(fd) || fd <= STDERR_FILENO || fd >= FD_MAX_SIZE) {
+	if (!is_valid_fd_num(fd) || fd < MIN_FILENO || fd >= FD_MAX_SIZE) {
 		exit(-1);
 	}
 }
@@ -202,7 +202,7 @@ open (const char* file_name)
 		exit(-1);
 	}
 	int cur_fd;
-	for (cur_fd = STDERR_FILENO + 1; cur_fd < FD_MAX_SIZE; cur_fd++) {
+	for (cur_fd = MIN_FILENO; cur_fd < FD_MAX_SIZE; cur_fd++) {
 		if (is_valid_fd_num(cur_fd)) {
 			break;
 		}
@@ -261,7 +261,7 @@ write (int fd, const void *buffer, unsigned size)
         	putbuf(buffer, size);
         	return size;	
 	} 
-	else if (fd > STDERR_FILENO && fd < FD_MAX_SIZE) {
+	else if (fd >= MIN_FILENO && fd < FD_MAX_SIZE) {
 		/* fprint has not been implemented yet! */
 		check_fd_num(fd);
 		lock_acquire(&fs_lock);
@@ -291,7 +291,7 @@ int read(int fd, void *buffer, unsigned size) {
 		lock_release(&fs_lock);
         	return size;	
 	} 
-	else if (fd > STDERR_FILENO && fd < FD_MAX_SIZE) {
+	else if (fd >= MIN_FILENO && fd < FD_MAX_SIZE) {
 		check_fd_num(fd);
 		lock_acquire(&fs_lock);
 		struct thread *t = thread_current();

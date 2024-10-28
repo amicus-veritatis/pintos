@@ -188,7 +188,7 @@ process_exit (void)
 {
    struct thread *cur = thread_current ();
    
-   for (int fd=STDERR_FILENO+1; fd<FD_MAX_SIZE; fd++) {
+   for (int fd=MIN_FILENO; fd<FD_MAX_SIZE; fd++) {
     file_close(cur->fd[fd]);
     cur->fd[fd] = NULL;
    }
