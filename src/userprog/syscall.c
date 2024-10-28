@@ -149,6 +149,7 @@ void check_address(const void *addr) {
 
 void check_fd_num (const int fd) {
 	if (!is_valid_fd_num(fd) || fd < MIN_FILENO || fd >= FD_MAX_SIZE) {
+		lock_release(&fs_lock);
 		exit(-1);
 	}
 }
@@ -197,6 +198,7 @@ open (const char* file_name)
 {
 	// Do not trust anything
 	check_address(file_name);
+	lock_acquire(&fs_lock);
 	struct file *f = filesys_open(file_name);
 	if (f == NULL) {
 		exit(-1);
@@ -213,6 +215,7 @@ open (const char* file_name)
 	}
 	struct thread *t = thread_current();
 	t->fd[cur_fd] = f;
+	lock_release(&fs_lock);
 	return cur_fd;
 }
 
@@ -295,6 +298,10 @@ int read(int fd, void *buffer, unsigned size) {
 		check_fd_num(fd);
 		lock_acquire(&fs_lock);
 		struct thread *t = thread_current();
+		if (t->fd[fd] == NULL) {
+			lock_release(&fs_lock);
+			exit (-1);
+		}
 		int f = file_read(t->fd[fd], buffer, size);
 		lock_release(&fs_lock);
 		return f;
