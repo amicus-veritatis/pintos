@@ -198,7 +198,9 @@ open (const char* file_name)
 	// Do not trust anything
 	check_address(file_name);
 	struct file *f = filesys_open(file_name);
-	check_address(f);
+	if (f == NULL) {
+		exit(-1);
+	}
 	int cur_fd;
 	for (cur_fd = STDERR_FILENO + 1; cur_fd < FD_MAX_SIZE; cur_fd++) {
 		if (is_valid_fd_num(cur_fd)) {
@@ -229,14 +231,20 @@ void
 seek (int fd, unsigned position)
 {
 	check_fd_num(fd);
+	lock_acquire(&fs_lock);
 	file_seek(thread_current()->fd[fd], position);
+	lock_release(&fs_lock);
 }
 
 unsigned
 tell (fd)
 {
 	check_fd_num(fd);
-	return file_tell(thread_current()->fd[fd]);
+	unsigned status;
+	lock_acquire(&fs_lock);
+	status = file_tell(thread_current()->fd[fd]);
+	lock_release(&fs_lock);
+	return status;
 }
 
 /* 
