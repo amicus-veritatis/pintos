@@ -132,7 +132,6 @@ struct thread
 #endif
 
     struct file *fd[FD_MAX_SIZE]; /* file descriptor table. */
-    struct dir *cur_dir;
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
     

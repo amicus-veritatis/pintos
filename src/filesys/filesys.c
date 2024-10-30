@@ -28,7 +28,6 @@ filesys_init (bool format)
     do_format ();
 
   struct thread *t = thread_current();
-  t->cur_dir = dir_open_root();
   free_map_open ();
 }
 
