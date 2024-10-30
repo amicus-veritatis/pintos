@@ -205,9 +205,9 @@ open (const char* file_name)
 		lock_release(&fs_lock);
 		return -1;
 	}
-	int cur_fd;
-	for (cur_fd = MIN_FILENO; cur_fd < FD_MAX_SIZE; cur_fd++) {
-		if (thread_current()->fd[cur_fd] == NULL) {
+	int cur_fd = MIN_FILENO;
+	while (cur_fd < FD_MAX_SIZE) {
+		if (thread_current()->fd[cur_fd++] == NULL) {
 			break;
 		}
 	}
@@ -215,10 +215,11 @@ open (const char* file_name)
 		lock_release(&fs_lock);
 		return -1;
 	}
-	if (strcmp(thread_name(), file_name) == 0) {
+	struct thread *t = thread_current();
+	if (strcmp(t->name, file_name) == 0) {
 		file_deny_write(f);
 	}
-	thread_current()->fd[cur_fd] = f;
+	t->fd[cur_fd] = f;
 	lock_release(&fs_lock);
 	return cur_fd;
 }
