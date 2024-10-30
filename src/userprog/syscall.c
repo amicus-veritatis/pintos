@@ -207,9 +207,10 @@ open (const char* file_name)
 	}
 	int cur_fd = MIN_FILENO;
 	while (cur_fd < FD_MAX_SIZE) {
-		if (thread_current()->fd[cur_fd++] == NULL) {
+		if (thread_current()->fd[cur_fd] == NULL) {
 			break;
 		}
+		cur_fd++;
 	}
 	if (cur_fd >= FD_MAX_SIZE) {
 		lock_release(&fs_lock);
@@ -256,7 +257,7 @@ tell (fd)
 }
 
 /* 
- * return with -1 if user is either trying to
+ * return with 0 if user is either trying to
  * write into stdin or cause out-of-range error
  */
 int
@@ -264,11 +265,11 @@ write (int fd, const void *buffer, unsigned size)
 {
 	check_address(buffer);
 	if (fd == STDIN_FILENO) {
-		return -1;
+		return 0;
 	} else if (fd == STDOUT_FILENO) {
         	putbuf(buffer, size);
-        	return size;	
-	} 
+        	return size;
+	}
 	else if (fd >= MIN_FILENO && fd < FD_MAX_SIZE) {
 		/* fprint has not been implemented yet! */
 		lock_acquire(&fs_lock);
@@ -280,6 +281,7 @@ write (int fd, const void *buffer, unsigned size)
 		lock_release(&fs_lock);
 		return ret;
 	}
+	return 0;
 }
 
 /* 
