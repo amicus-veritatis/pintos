@@ -219,10 +219,12 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+#ifndef USERPROG
   if (priority > thread_get_priority())
   {
 	  thread_yield();
   }
+#endif
   return tid;
 }
 

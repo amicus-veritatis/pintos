@@ -113,6 +113,12 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
+
+#ifdef USERPROG
+  if (!list_empty (&sema->waiters))
+    thread_unblock (list_entry (list_pop_front (&sema->waiters),
+                                struct thread, elem));
+#else
   if (!list_empty (&sema->waiters)) {
 	struct list_elem *max_it = list_begin(&sema->waiters);
 	for (struct list_elem *it = list_begin(&sema->waiters); it != list_end(&sema->waiters); it = list_next(it)) {
@@ -124,9 +130,12 @@ sema_up (struct semaphore *sema)
 	list_remove(max_it);
 	thread_unblock(max_t);
   }
+#endif
   sema->value++;
   intr_set_level (old_level);
+#ifndef USERPROG
   thread_yield();
+#endif
 }
 
 static void sema_test_helper (void *sema_);
