@@ -4,7 +4,11 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include "synch.h"
+#include "threads/synch.h"
+
+/* Project #3. */
+extern bool thread_prior_aging;
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -104,9 +108,7 @@ struct thread
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-
     int64_t ticks;
-
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
 
@@ -168,7 +170,7 @@ void thread_yield (void);
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
-
+bool cmp(const struct list_elem* a, const struct list_elem* b, void *aux);
 int thread_get_priority (void);
 void thread_set_priority (int);
 
