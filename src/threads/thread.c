@@ -20,8 +20,8 @@
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
-#define MAX(a,b) (((a)<(b))?(a):(b))
-#define MIN(a,b) (((a)<(b))?(b):(a))
+#define MAX(a,b) (((a)>(b))?(a):(b))
+#define MIN(a,b) (((a)<(b))?(a):(b))
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -76,8 +76,10 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+#ifndef USERPROG
 static void thread_aging (void);
 static void advance_thread_priority(struct thread *, void *);
+#endif
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -148,9 +150,11 @@ thread_tick (void)
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return ();
 
-  if (thread_prior_aging == true){
-	 thread_aging (); 
+#ifndef USERPROG
+  if (thread_prior_aging){
+	 thread_aging(); 
   }
+#endif
 }
 
 /* Prints thread statistics. */
@@ -624,8 +628,7 @@ allocate_tid (void)
 
   return tid;
 }
-
-
+#ifndef USERPROG
 void
 advance_thread_priority (struct thread *t, void *aux)
 {
@@ -640,7 +643,7 @@ thread_aging (void)
 {
 	thread_foreach (advance_thread_priority, NULL);
 }
-
+#endif
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
