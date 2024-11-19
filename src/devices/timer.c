@@ -7,7 +7,8 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-  
+#include "threads/fixed-point.h"
+
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -16,6 +17,8 @@
 #if TIMER_FREQ > 1000
 #error TIMER_FREQ <= 1000 recommended
 #endif
+
+#define MLFQS_TIMER_FREQ 4
 
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
@@ -189,6 +192,20 @@ timer_interrupt (struct intr_frame *args UNUSED)
 		thread_unblock(t);
 	} else {
 		it = list_next(it);
+	}
+  }
+  
+  if (thread_mlfqs) {
+        struct thread *t = thread_current();
+	if (!is_idle_thread(t)) {
+		t->recent_cpu = iadd(t->recent_cpu, 1);
+	}
+	if (ticks % TIMER_FREQ == 0) {
+		update_load_avg();
+		thread_foreach(update_recent_cpu, NULL);
+	}
+	if (ticks % MLFQS_TIMER_FREQ == 0) {
+		thread_foreach(update_mlfqs_priority, NULL);
 	}
   }
 }

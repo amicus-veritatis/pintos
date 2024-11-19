@@ -370,13 +370,15 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  intr_disable();
+  if (thread_mlfqs) {
+    return;
+  }
   struct thread *t = thread_current();
   int old_priority = t->priority;
   t->priority = new_priority;
 
   if (old_priority > new_priority) {
-  	thread_yield();
+    thread_yield();
   }
 }
 
@@ -391,28 +393,107 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice) 
 {
-  /* Not yet implemented. */
+  enum intr_level old_level = intr_disable();
+  struct thread *t = thread_current();
+  t->nice = nice;
+  t->priority = calculate_mlfqs_priority(t);
+  int max_priority = -1;
+  if (!list_empty(&ready_list)) {
+	max_priority = list_entry(list_begin(&ready_list), struct thread, elem)->priority;
+  }
+  if (max_priority > t->priority) {
+	thread_yield();
+  }
+  intr_set_level(old_level);
+}
+
+int
+calculate_mlfqs_priority (struct thread *t)
+{
+  int priority = t->priority;
+  int term_nice = 2 * t->nice;
+  int term_recent_cpu = idiv(t->recent_cpu, 4);
+  int term_add = iadd(term_recent_cpu, term_nice);
+  int new_priority = fround(sub(itof(PRI_MAX), term_add));
+  return MAX(PRI_MIN, MIN(PRI_MAX, new_priority));
+}
+
+int
+thread_get_mlfqs_priority (void)
+{
+  return calculate_mlfqs_priority (thread_current());
+}
+
+void
+update_recent_cpu (struct thread *t, void *aux)
+{
+  if (t == idle_thread) {
+	 return;
+  }
+  t->recent_cpu = calculate_recent_cpu(t); 
+}
+
+void
+update_mlfqs_priority (struct thread *t, void *aux)
+{
+  if (t == idle_thread) {
+	  return;
+  }
+  t->priority = calculate_mlfqs_priority(t);
+}
+
+void
+update_load_avg ()
+{
+  int ready_threads = list_size(&ready_list) + 1;
+  if (thread_current() == idle_thread) {
+    ready_threads--;
+  }
+  int term_load_avg = imul(load_avg, 59);
+  int term_ready_threads = itof(ready_threads);
+  int term_sum = add(term_load_avg, term_ready_threads);
+  load_avg = idiv(term_sum, 60);
+}
+
+int
+calculate_recent_cpu (struct thread *t)
+{
+  int recent_cpu = t->recent_cpu;
+  int nice = t->nice;
+  int term_load_avg = imul(load_avg, 2);
+  term_load_avg = div(term_load_avg, iadd(term_load_avg, 1));
+  int term_first = mul(term_load_avg, recent_cpu);
+  return iadd(term_first, nice);
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  return thread_current () -> nice;
+  enum intr_level old_level = intr_disable();
+  int nice = thread_current () -> nice;
+  intr_set_level(old_level);
+  return nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  return fround(imul(load_avg, 100));
+  enum intr_level old_level = intr_disable();
+  int ret = fround(imul(load_avg, 100));
+  intr_set_level(old_level);
+  return ret;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  return fround(imul(thread_current () -> recent_cpu, 100));
+  enum intr_level old_level = intr_disable();
+  int recent_cpu = fround(imul(thread_current () -> recent_cpu, 100));
+  intr_set_level(old_level);
+  return recent_cpu;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -630,6 +711,13 @@ allocate_tid (void)
 
   return tid;
 }
+
+bool
+is_idle_thread (struct thread *t)
+{
+	return t == idle_thread;
+}
+
 #ifndef USERPROG
 void
 advance_thread_priority (struct thread *t, void *aux)

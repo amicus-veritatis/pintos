@@ -181,4 +181,7 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+void update_recent_cpu (struct thread *, void *);
+void update_mlfqs_priority (struct thread *, void *);
+bool is_idle_thread(struct thread *);
 #endif /* threads/thread.h */
