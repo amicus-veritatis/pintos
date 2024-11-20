@@ -266,14 +266,13 @@ void
 thread_unblock (struct thread *t) 
 {
   enum intr_level old_level;
-
   ASSERT (is_thread (t));
-
-  old_level = intr_disable ();
+  
+  old_level = intr_disable();
   ASSERT (t->status == THREAD_BLOCKED);
   list_insert_ordered (&ready_list, &t->elem, cmp, NULL);
   t->status = THREAD_READY;
-  intr_set_level (old_level);
+  intr_set_level(old_level);
 }
 
 /* Returns the name of the running thread. */
@@ -470,30 +469,21 @@ calculate_recent_cpu (struct thread *t)
 int
 thread_get_nice (void) 
 {
-  enum intr_level old_level = intr_disable();
-  int nice = thread_current () -> nice;
-  intr_set_level(old_level);
-  return nice;
+  return thread_current () -> nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  enum intr_level old_level = intr_disable();
-  int ret = fround(imul(load_avg, 100));
-  intr_set_level(old_level);
-  return ret;
+  return fround(imul(load_avg, 100));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  enum intr_level old_level = intr_disable();
-  int recent_cpu = fround(imul(thread_current () -> recent_cpu, 100));
-  intr_set_level(old_level);
-  return recent_cpu;
+  return fround(imul(thread_current () -> recent_cpu, 100));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
