@@ -18,6 +18,17 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#ifdef VM
+#include "vm/frame.h"
+#endif
+
+#ifdef VM
+#define get_page(flags) frame_get_page(flags)
+#define free_page(page) frame_free_page(page)
+#else
+#define get_page(flags) palloc_get_page(flags)
+#define free_page(page) palloc_free_page(page)
+#endif
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -33,7 +44,7 @@ process_execute (const char *file_name)
   tid_t tid;
   char *save_ptr = NULL;
 
-  fn_copy = palloc_get_page (0);
+  fn_copy = get_page (0);
   if (fn_copy == NULL) {
         return TID_ERROR;
   }
@@ -42,9 +53,9 @@ process_execute (const char *file_name)
      Otherwise there's a race between the caller and load(). */
 
   /* Information about child process. */
-  struct process_info *pinfo = palloc_get_page(0);
+  struct process_info *pinfo = get_page(0);
   if (pinfo == NULL) {
-	palloc_free_page(fn_copy);
+	free_page(fn_copy);
 	return TID_ERROR;
   } 
   pinfo->fn_copy = fn_copy;
@@ -59,10 +70,10 @@ process_execute (const char *file_name)
   cur->load_status = LOAD_INIT;
 
   /* Avoid race condition */ 
-  char *fn_copy_copy = palloc_get_page (0);
+  char *fn_copy_copy = get_page (0);
   if (fn_copy_copy == NULL) {
-	  palloc_free_page (fn_copy);
-	  palloc_free_page (pinfo);
+	  free_page (fn_copy);
+	  free_page (pinfo);
 	  return TID_ERROR;
   }
   strlcpy(fn_copy_copy, file_name, PGSIZE);
@@ -70,9 +81,9 @@ process_execute (const char *file_name)
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, pinfo);
   if (tid == TID_ERROR) {
-    palloc_free_page (fn_copy);
-    palloc_free_page (fn_copy_copy);
-    palloc_free_page (pinfo);
+    free_page (fn_copy);
+    free_page (fn_copy_copy);
+    free_page (pinfo);
     return TID_ERROR;
   }
   /* Wait until thread is actually created */
@@ -84,9 +95,9 @@ process_execute (const char *file_name)
   if (pinfo->self != NULL) {
     list_push_back(&(cur->children), &(pinfo->self->child_elem));
   }
-  palloc_free_page(fn_copy);
-  palloc_free_page(fn_copy_copy);
-  palloc_free_page(pinfo);
+  free_page(fn_copy);
+  free_page(fn_copy_copy);
+  free_page(pinfo);
   return tid;
 }
 
@@ -570,14 +581,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
+      uint8_t *kpage = get_page (PAL_USER);
       if (kpage == NULL)
         return false;
 
       /* Load this page. */
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
-          palloc_free_page (kpage);
+          free_page (kpage);
           return false; 
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
@@ -585,7 +596,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Add the page to the process's address space. */
       if (!install_page (upage, kpage, writable)) 
         {
-          palloc_free_page (kpage);
+          free_page (kpage);
           return false; 
         }
 
@@ -605,14 +616,14 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
         *esp = PHYS_BASE;
       else
-        palloc_free_page (kpage);
+        free_page (kpage);
     }
   return success;
 }
