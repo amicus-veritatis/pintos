@@ -11,7 +11,7 @@
 #define O_WRITABLE 0x08
 #define O_DIRTY 0x04
 
-#define O_PG_OFFSET 0x0C
+#define O_NON_PG_MASK 0x0C
 #define O_PG_MASK 0x03
 #define O_PG_SWAP 0x03
 #define O_PG_ALL_ZERO 0x02

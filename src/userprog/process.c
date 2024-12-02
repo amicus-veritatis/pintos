@@ -673,7 +673,8 @@ setup_stack (void **esp)
   if (s == NULL) {
     return success;
   }
-  
+ 
+  s->flags = 0;
   s->upage = upage;
   s->flags |= O_WRITABLE;
   s->flags |= O_PG_ALL_ZERO;

@@ -8,6 +8,7 @@
 #include "threads/vaddr.h"
 #include "syscall.h"
 #ifdef VM
+#include "userprog/pagedir.h"
 #include "threads/vaddr.h"
 #include "vm/page.h"
 #include "vm/frame.h"
@@ -163,39 +164,24 @@ page_fault (struct intr_frame *f)
      exit(-1);
   }
 #else
-  void *esp;
-  if (user) {
-    esp = f->esp;
-  } else {
-    esp = thread_current()->stack;
-  }
-  if (user && is_kernel_vaddr(fault_addr)) {
-    exit(-1);
-  }
-#endif
-#ifdef VM
-  /* There must be reasons for this, so kill it */
-  if (fault_addr == NULL) {
-    exit(-1);
-  }
   if (!not_present) {
     goto KERNEL_GA_KILL;
   }
+#endif
+#ifdef VM
   struct thread *t = thread_current();
   struct supp_page_table_entry *s = search_by_vaddr(t, fault_addr);
- 
+
   if (s == NULL) {
-    if (is_kernel_vaddr(fault_addr)) {
-      PANIC("Stack growth? on kernel address?");
+    if (!is_growable(fault_addr)) {
+      goto KERNEL_GA_KILL;
     }
-    if (fault_addr < esp - 32) {
-      PANIC("Pintos Manual 4.3.3: it can fault 32 bytes below the stack pointer.");
-    }
-    else {
-      PANIC("Stack growth not yet supported");
-    }
+    expand_stack();
+    return;
   } else {
-    exit(-1);
+    if (!handle_mm_fault(fault_addr)) {
+      goto KERNEL_GA_KILL;
+    }
   }
 #endif
 KERNEL_GA_KILL:
@@ -207,9 +193,42 @@ KERNEL_GA_KILL:
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
+  // exit(-1);
   kill(f);
 }
 
+bool
+handle_mm_fault (struct supp_page_table_entry *s) {
+ if (s != NULL) {
+    uint8_t flags = s->flags & O_PG_MASK;
+    void *new_page = frame_get_page(PAL_USER);
+    if (new_page == NULL) {
+      goto KERNEL_GA_KILL;
+    }
+    switch (flags) {
+      case O_PG_ALL_ZERO:
+        memset(new_page, 0, PGSIZE);
+      case O_PG_MEM:
+        break;
+      case O_PG_FS:
+        PANIC("O_PG_FS happened, how?");
+      case O_PG_SWAP:
+        PANIC("SWAP NOT IMPLEMENTED YET");
+      default:
+        PANIC ("Literally impossible");
+    }
+    bool writable = (s->flags & O_WRITABLE) != 0;
+    if (!pagedir_set_page (t->pagedir, (void *) pg_round_down(fault_addr), new_page, writable)) {
+      frame_free_page(new_page);
+      goto KERNEL_GA_KILL;
+    }
+    uint8_t tmp = s->flags & O_NON_PG_MASK;
+    s->flags = tmp | O_PG_MEM;
+    pagedir_set_dirty(t->pagedir, new_page, 0);
+    return;
+  }
+*/
+#
 /* See the original function in syscall.c */
 void
 exit (int status)
