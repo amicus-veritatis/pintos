@@ -16,6 +16,7 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #ifdef VM
@@ -224,6 +225,7 @@ process_exit (void)
    }
 
 #ifdef VM
+   hash_destroy(cur->supp_page_table, NULL);
    free(cur->supp_page_table);
    cur->supp_page_table = NULL;
 #endif
@@ -355,8 +357,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
   int i;
 
 #ifdef VM
-  t->supp_page_table = get_page(0);
-  hash_init(&(t->supp_page_table), supp_hash, supp_less, NULL);
+  t->supp_page_table = malloc(sizeof(struct hash));
+  if (t->supp_page_table == NULL) {
+    return false;
+  }
+  hash_init(t->supp_page_table, supp_hash, supp_less, NULL);
 #endif
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
@@ -605,12 +610,34 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
       /* Add the page to the process's address space. */
+#ifndef VM
       if (!install_page (upage, kpage, writable)) 
         {
           free_page (kpage);
           return false; 
         }
-
+#else
+      struct supp_page_table_entry *s = malloc(sizeof(struct supp_page_table_entry));
+      if (s == NULL) {
+        return false;
+      }
+      
+      s->upage = upage;
+      s->flags = 0;
+      s->file = file;
+      s->ofs = ofs;
+      s->read_bytes = read_bytes;
+      s->zero_bytes = zero_bytes;
+      
+      if (writable) {
+        s->flags |= O_WRITABLE;
+      }
+      s->flags |= O_PG_MEM;
+      struct thread *t = thread_current();
+      hash_insert(t->supp_page_table, &(s->elem));
+#endif
+      
+      
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
@@ -624,6 +651,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp) 
 {
+#ifndef VM 
   uint8_t *kpage;
   bool success = false;
 
@@ -637,6 +665,24 @@ setup_stack (void **esp)
         free_page (kpage);
     }
   return success;
+#else
+  uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
+  bool success = false;
+  struct supp_page_table_entry *s = malloc(sizeof(struct supp_page_table_entry));
+  
+  if (s == NULL) {
+    return success;
+  }
+  
+  s->upage = upage;
+  s->flags |= O_WRITABLE;
+  s->flags |= O_PG_ALL_ZERO;
+  struct thread *t = thread_current(); 
+  hash_insert(t->supp_page_table, &(s->elem));
+  *esp = PHYS_BASE;
+  success = true;
+  return success;
+#endif
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel

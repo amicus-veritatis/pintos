@@ -4,6 +4,8 @@
 #include "threads/synch.h"
 #include "threads/malloc.h"
 #include "threads/palloc.h"
+#include "threads/thread.h"
+#include "threads/vaddr.h"
 #include "vm/page.h"
 
 unsigned
@@ -22,4 +24,14 @@ supp_less (const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNU
   return a->upage < b->upage;
 }
 
-
+struct supp_page_table_entry*
+search_by_vaddr(struct thread *t, void * vaddr)
+{
+  struct supp_page_table_entry tmp;
+  tmp.upage = (void *) pg_round_down(vaddr);
+  struct hash_elem *tmp_elem = hash_find(t->supp_page_table, &(tmp.elem));
+  if (tmp_elem == NULL) {
+    return NULL;
+  }
+  return hash_entry(tmp_elem, struct supp_page_table_entry, elem);
+}

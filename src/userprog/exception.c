@@ -7,7 +7,11 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "syscall.h"
-
+#ifdef VM
+#include "threads/vaddr.h"
+#include "vm/page.h"
+#include "vm/frame.h"
+#endif
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -151,13 +155,50 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+#ifndef VM
   if (user && is_kernel_vaddr(fault_addr)) {
      exit(-1);
   }
   if (not_present) {
      exit(-1);
   }
-
+#else
+  void *esp;
+  if (user) {
+    esp = f->esp;
+  } else {
+    esp = thread_current()->stack;
+  }
+  if (user && is_kernel_vaddr(fault_addr)) {
+    exit(-1);
+  }
+#endif
+#ifdef VM
+  /* There must be reasons for this, so kill it */
+  if (fault_addr == NULL) {
+    exit(-1);
+  }
+  if (!not_present) {
+    goto KERNEL_GA_KILL;
+  }
+  struct thread *t = thread_current();
+  struct supp_page_table_entry *s = search_by_vaddr(t, fault_addr);
+ 
+  if (s == NULL) {
+    if (is_kernel_vaddr(fault_addr)) {
+      PANIC("Stack growth? on kernel address?");
+    }
+    if (fault_addr < esp - 32) {
+      PANIC("Pintos Manual 4.3.3: it can fault 32 bytes below the stack pointer.");
+    }
+    else {
+      PANIC("Stack growth not yet supported");
+    }
+  } else {
+    exit(-1);
+  }
+#endif
+KERNEL_GA_KILL:
  /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
