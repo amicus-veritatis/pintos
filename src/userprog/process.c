@@ -19,7 +19,10 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #ifdef VM
+#include <hash.h>
+#include "lib/kernel/hash.h"
 #include "vm/frame.h"
+#include "vm/page.h"
 #endif
 
 #ifdef VM
@@ -220,6 +223,10 @@ process_exit (void)
 	}
    }
 
+#ifdef VM
+   free(cur->supp_page_table);
+   cur->supp_page_table = NULL;
+#endif
 
    uint32_t *pd;
 
@@ -347,6 +354,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
+#ifdef VM
+  t->supp_page_table = get_page(0);
+  hash_init(&(t->supp_page_table), supp_hash, supp_less, NULL);
+#endif
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 

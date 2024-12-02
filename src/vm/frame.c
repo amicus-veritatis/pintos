@@ -12,14 +12,14 @@ struct hash frame_hash_map_by_fid;
 struct list frame_list;
 struct lock fid_lock;
 
-static unsigned
+unsigned
 frame_vtop_hash(const struct hash_elem *f_, void *aux UNUSED)
 {
   const struct frame_table_entry *frame = hash_entry(f_, struct frame_table_entry, vtop_elem);
   return hash_bytes(&(frame->vtop), sizeof(frame->vtop));
 }
 
-static bool
+bool
 frame_vtop_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED)
 {
   const struct frame_table_entry *a = hash_entry (a_, struct frame_table_entry, vtop_elem);
@@ -101,7 +101,7 @@ frame_get_page(enum palloc_flags flags)
     return NULL;
   }
 
-  struct frame_table_entry *frame = malloc(sizeof(struct frame_table_entry));
+  struct frame_table_entry *frame = palloc_get_page(0);
   if (frame == NULL) {
     palloc_free_page(page);
     return NULL;

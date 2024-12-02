@@ -584,6 +584,9 @@ init_thread (struct thread *t, const char *name, int priority)
   sema_init(&(t->remove_sema), 0);
   list_init(&(t->children));
 #endif
+#ifdef VM
+  t->supp_page_table = NULL;
+#endif
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);

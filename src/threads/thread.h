@@ -11,6 +11,10 @@
 extern bool thread_prior_aging;
 #endif
 
+#ifdef VM
+#include "vm/page.h"
+#endif
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -141,7 +145,9 @@ struct thread
      */
     
 #endif
-
+#ifdef VM
+    struct hash *supp_page_table;
+#endif
     struct file *fd[FD_MAX_SIZE]; /* file descriptor table. */
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
