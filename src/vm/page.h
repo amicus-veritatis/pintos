@@ -4,6 +4,7 @@
 #include "threads/synch.h"
 #include "threads/malloc.h"
 #include "threads/palloc.h"
+#include "filesys/off_t.h"
 
 #include <hash.h>
 #include "lib/kernel/hash.h"
@@ -20,16 +21,18 @@
 
 struct supp_page_table_entry {
   void *upage;
+  void *kpage;
   struct file *file;
-  size_t ofs;
-  size_t read_bytes;
-  size_t zero_bytes;
+  off_t ofs;
+  uint32_t read_bytes;
+  uint32_t zero_bytes;
   uint8_t flags;
   struct hash_elem elem;
 };
 
 unsigned supp_hash (const struct hash_elem *, void * UNUSED);
 bool supp_less (const struct hash_elem *, const struct hash_elem *, void * UNUSED);
-struct supp_page_table_entry* search_by_vaddr(struct thread *, void *);
+struct supp_page_table_entry* search_by_kpage(struct thread *, void *);
+void grow_stack (void *);
 
 #endif

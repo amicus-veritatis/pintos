@@ -31,7 +31,6 @@ static pid_t exec(const char* cmd_line);
 static int fibonacci (int n);
 static int max_of_four_int (int a, int b, int c, int d);
 /* End of system call functions */
-
 struct lock fs_lock;
 
 void

@@ -7,24 +7,24 @@
 #include "threads/vaddr.h"
 
 struct lock frame_lock;
-struct hash frame_hash_map_by_vtop;
+struct hash frame_hash_map_by_kpage;
 struct hash frame_hash_map_by_fid;
 struct list frame_list;
 struct lock fid_lock;
 
 static unsigned
-frame_vtop_hash(const struct hash_elem *f_, void *aux UNUSED)
+frame_kpage_hash(const struct hash_elem *f_, void *aux UNUSED)
 {
-  const struct frame_table_entry *frame = hash_entry(f_, struct frame_table_entry, vtop_elem);
-  return hash_bytes(&(frame->vtop), sizeof(frame->vtop));
+  const struct frame_table_entry *frame = hash_entry(f_, struct frame_table_entry, kpage_elem);
+  return hash_bytes(&(frame->kpage), sizeof(frame->kpage));
 }
 
 static bool
-frame_vtop_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED)
+frame_kpage_less(const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNUSED)
 {
-  const struct frame_table_entry *a = hash_entry (a_, struct frame_table_entry, vtop_elem);
-  const struct frame_table_entry *b = hash_entry (b_, struct frame_table_entry, vtop_elem);
-  return a->vtop < b->vtop;
+  const struct frame_table_entry *a = hash_entry (a_, struct frame_table_entry, kpage_elem);
+  const struct frame_table_entry *b = hash_entry (b_, struct frame_table_entry, kpage_elem);
+  return a->kpage < b->kpage;
 }
 
 static unsigned
@@ -46,7 +46,7 @@ void
 frame_init()
 {
   lock_init(&frame_lock);
-  hash_init(&frame_hash_map_by_vtop, frame_vtop_hash, frame_vtop_less, NULL);
+  hash_init(&frame_hash_map_by_kpage, frame_kpage_hash, frame_kpage_less, NULL);
   hash_init(&frame_hash_map_by_fid, frame_fid_hash, frame_fid_less, NULL);
   lock_init(&fid_lock);
 }
@@ -68,12 +68,12 @@ struct frame_table_entry*
 search_by_page(void *page)
 {
   struct frame_table_entry tmp;
-  tmp.vtop = vtop(page);
-  struct hash_elem *tmp_elem = hash_find(&frame_hash_map_by_vtop, &(tmp.vtop_elem));
+  tmp.kpage = page;
+  struct hash_elem *tmp_elem = hash_find(&frame_hash_map_by_kpage, &(tmp.kpage_elem));
   if (tmp_elem == NULL) {
     return NULL;
   }
-  return hash_entry(tmp_elem, struct frame_table_entry, vtop_elem);
+  return hash_entry(tmp_elem, struct frame_table_entry, kpage_elem);
 }
 
 struct frame_table_entry*
@@ -96,7 +96,7 @@ search_by_fid(fid_t fid)
 void*
 frame_get_page(enum palloc_flags flags)
 {
-  void *page = palloc_get_page(PAL_USER | flags);
+  void *page = palloc_get_page(flags);
   if (page == NULL) {
     return NULL;
   }
@@ -108,11 +108,10 @@ frame_get_page(enum palloc_flags flags)
   }
 
   frame->fid = allocate_fid();
-  frame->upage = page;
-  frame->vtop = (void *) vtop(page);
+  frame->kpage = page;
   frame->status = FRAME_USED;
   lock_acquire(&frame_lock);
-  hash_insert(&frame_hash_map_by_vtop, &(frame->vtop_elem));
+  hash_insert(&frame_hash_map_by_kpage, &(frame->kpage_elem));
   hash_insert(&frame_hash_map_by_fid, &(frame->fid_elem));
   lock_release(&frame_lock);
 
@@ -137,9 +136,9 @@ frame_free_page(void *page)
   }
 
   lock_acquire(&frame_lock);
-  hash_delete(&frame_hash_map_by_vtop, &frame->vtop_elem);
+  hash_delete(&frame_hash_map_by_kpage, &frame->kpage_elem);
   hash_delete(&frame_hash_map_by_fid, &frame->fid_elem);
-  palloc_free_page(frame->upage);
+  palloc_free_page(page);
   free(frame);
   lock_release(&frame_lock);
 }

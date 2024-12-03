@@ -18,9 +18,8 @@ struct frame_table_entry
   {
     fid_t fid;
     enum frame_status status;
-    void *upage;
-    void *vtop;
-    struct hash_elem vtop_elem; /* Hash table element. */
+    void *kpage;
+    struct hash_elem kpage_elem; /* Hash table element. */
     struct hash_elem fid_elem;
   };
 

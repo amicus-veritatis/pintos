@@ -25,7 +25,6 @@
 #include "vm/frame.h"
 #include "vm/page.h"
 #endif
-
 #ifdef VM
 #define get_page(flags) frame_get_page(flags)
 #define free_page(page) frame_free_page(page)
@@ -359,7 +358,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 #ifdef VM
   t->supp_page_table = malloc(sizeof(struct hash));
   if (t->supp_page_table == NULL) {
-    return false;
+    goto done;
   }
   hash_init(t->supp_page_table, supp_hash, supp_less, NULL);
 #endif
@@ -513,7 +512,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
+#ifndef VM
   file_close (file);
+#endif
   return success;
 }
 /* load() helpers. */
@@ -596,6 +597,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
+#ifndef VM
       /* Get a page of memory. */
       uint8_t *kpage = get_page (PAL_USER);
       if (kpage == NULL)
@@ -608,9 +610,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           return false; 
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
       /* Add the page to the process's address space. */
-#ifndef VM
       if (!install_page (upage, kpage, writable)) 
         {
           free_page (kpage);
@@ -621,7 +621,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (s == NULL) {
         return false;
       }
-      
       s->upage = upage;
       s->flags = 0;
       s->file = file;
@@ -632,7 +631,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (writable) {
         s->flags |= O_WRITABLE;
       }
-      s->flags |= O_PG_MEM;
+      s->flags |= O_PG_FS;
       struct thread *t = thread_current();
       hash_insert(t->supp_page_table, &(s->elem));
 #endif
@@ -642,6 +641,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
+#ifdef VM
+      ofs += PGSIZE;
+#endif
     }
   return true;
 }
@@ -651,11 +653,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack (void **esp) 
 {
-#ifndef VM 
   uint8_t *kpage;
   bool success = false;
 
   kpage = get_page (PAL_USER | PAL_ZERO);
+#ifndef VM
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
@@ -666,18 +668,22 @@ setup_stack (void **esp)
     }
   return success;
 #else
-  uint8_t *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
-  bool success = false;
   struct supp_page_table_entry *s = malloc(sizeof(struct supp_page_table_entry));
   
   if (s == NULL) {
+    free_page(kpage);
     return success;
   }
- 
+  s->upage = ((uint8_t *) PHYS_BASE) - PGSIZE; 
   s->flags = 0;
-  s->upage = upage;
+  s->kpage = kpage;
   s->flags |= O_WRITABLE;
   s->flags |= O_PG_ALL_ZERO;
+  if(!install_page (s->upage, kpage, true)){
+    free(s);
+    free_page(kpage);
+    return false;
+  }
   struct thread *t = thread_current(); 
   hash_insert(t->supp_page_table, &(s->elem));
   *esp = PHYS_BASE;
@@ -685,7 +691,62 @@ setup_stack (void **esp)
   return success;
 #endif
 }
+#ifdef VM
+bool
+handle_mm_fault (struct supp_page_table_entry *s)
+{
 
+  uint8_t flags = s->flags & O_PG_MASK;
+  void *new_page = get_page(PAL_USER | PAL_ZERO);
+  if (new_page == NULL) {
+    return false;
+  }
+
+  bool success = false;
+  switch (flags) {
+    case O_PG_ALL_ZERO:
+      memset(new_page, 0, PGSIZE);
+      success = true;
+      break;
+
+    case O_PG_MEM:
+    case O_PG_FS:
+      file_seek(s->file, s->ofs);
+      if (file_read(s->file, new_page, s->read_bytes) != (int) s->read_bytes) {
+        free_page(new_page);
+        return false;
+      }
+      memset(new_page + s->read_bytes, 0, s->zero_bytes);
+      success = true;
+      break;
+
+    case O_PG_SWAP:
+      PANIC ("SWAP NOT IMPLEMENTED YET");
+      success = false;  // For now, return false until swap is implemented
+      break;
+
+    default:
+      success = false;
+      break;
+  }
+
+  if (!success) {
+    free_page(new_page);
+    return false;
+  }
+
+  bool writable = (s->flags & O_WRITABLE) != 0;
+  if (!install_page(s->upage, new_page, writable)) {
+    free_page(new_page);
+    return false;
+  }
+  s->kpage = new_page;
+  uint8_t tmp_flags = s->flags & O_NON_PG_MASK;
+  s->flags = tmp_flags | O_PG_MEM;
+  return true;
+}
+
+#endif
 /* Adds a mapping from user virtual address UPAGE to kernel
    virtual address KPAGE to the page table.
    If WRITABLE is true, the user process may modify the page;

@@ -25,10 +25,10 @@ supp_less (const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNU
 }
 
 struct supp_page_table_entry*
-search_by_vaddr(struct thread *t, void * vaddr)
+search_by_addr(struct thread *t, void * addr)
 {
   struct supp_page_table_entry tmp;
-  tmp.upage = (void *) pg_round_down(vaddr);
+  tmp.upage = (void *) pg_round_down(addr);
   struct hash_elem *tmp_elem = hash_find(t->supp_page_table, &(tmp.elem));
   if (tmp_elem == NULL) {
     return NULL;
