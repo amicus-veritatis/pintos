@@ -5,7 +5,7 @@
 #include "threads/malloc.h"
 #include "threads/palloc.h"
 #include "filesys/off_t.h"
-
+#include "threads/thread.h"
 #include <hash.h>
 #include "lib/kernel/hash.h"
 
@@ -32,7 +32,8 @@ struct supp_page_table_entry {
 
 unsigned supp_hash (const struct hash_elem *, void * UNUSED);
 bool supp_less (const struct hash_elem *, const struct hash_elem *, void * UNUSED);
-struct supp_page_table_entry* search_by_kpage(struct thread *, void *);
-void grow_stack (void *);
+struct supp_page_table_entry* search_by_addr(struct thread *, void *);
+void grow_stack (struct thread *, void *);
+void supp_destroy (struct hash_elem *, void * UNUSED);
 
 #endif

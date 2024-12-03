@@ -147,6 +147,7 @@ struct thread
 #endif
 #ifdef VM
     struct hash *supp_page_table;
+    void *esp;
 #endif
     struct file *fd[FD_MAX_SIZE]; /* file descriptor table. */
     /* Owned by thread.c. */

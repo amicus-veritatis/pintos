@@ -14,7 +14,7 @@
 #include "vm/page.h"
 #include "vm/frame.h"
 #include "userprog/process.h"
-#define STACK_BASE 0x08000000
+#define STACK_LIMIT 0x08048000
 #endif
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -173,18 +173,22 @@ page_fault (struct intr_frame *f)
 #ifdef VM
   struct thread *t = thread_current();
   struct supp_page_table_entry *s = search_by_addr(t, fault_addr);
-
   if (s == NULL) {
     if (!is_user_vaddr(fault_addr)) {
       goto KERNEL_GA_KILL;
     }
-    if (fault_addr + STACK_BASE < PHYS_BASE) {
+    if (pg_round_down(fault_addr) < PHYS_BASE - STACK_LIMIT) {
       goto KERNEL_GA_KILL;
     }
-    if (fault_addr < f->esp - 32) {
+    if (fault_addr < pg_round_down(f->esp - 32)) {
       goto KERNEL_GA_KILL;
     }
-    PANIC("stack growth not supported yet"); // grow_stack();
+    grow_stack(t, fault_addr); // grow_stack();
+    //
+    s = search_by_addr(t, fault_addr);
+    if (s == NULL || !handle_mm_fault(s)) {
+        goto KERNEL_GA_KILL;
+    }
   } else {
     if (!handle_mm_fault(s)) {
       PANIC("handle_mm_fault() failed");
@@ -196,13 +200,17 @@ KERNEL_GA_KILL:
  /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
+#ifndef VM
   printf ("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
-  // exit(-1);
+
   kill(f);
+#else
+  exit(-1);
+#endif
 }
 
 /* See the original function in syscall.c */

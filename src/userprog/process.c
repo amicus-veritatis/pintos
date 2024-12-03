@@ -125,8 +125,11 @@ start_process (void *pinfo_)
   success = load (file_name, &if_.eip, &if_.esp);
 
   struct thread* parent = pinfo->parent;
-  /* Common sense. */
-  cur->tid = success ? (pid_t)(cur->tid) : TID_ERROR;
+  if (success) {
+    cur->tid = (pid_t)(cur->tid);
+  } else {
+    cur->tid = TID_ERROR;
+  }
   cur->parent = parent;
   if (parent != NULL) {
       /* If load () failed, inform the parent */
@@ -200,6 +203,7 @@ process_wait (tid_t child_tid)
     return ret;
 }
 /* Free the current process's resources. */
+
 void
 process_exit (void)
 {
@@ -208,7 +212,7 @@ process_exit (void)
    for (int fd=MIN_FILENO; fd<FD_MAX_SIZE; fd++) {
     struct file *f = cur->fd[fd];
     if (f != NULL) {
-	file_close(cur->fd[fd]);
+	    file_close(cur->fd[fd]);
     	f= NULL;
     }
    }
@@ -625,8 +629,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       s->flags = 0;
       s->file = file;
       s->ofs = ofs;
-      s->read_bytes = read_bytes;
-      s->zero_bytes = zero_bytes;
+      s->read_bytes = page_read_bytes;
+      s->zero_bytes = page_zero_bytes;
       
       if (writable) {
         s->flags |= O_WRITABLE;
@@ -655,18 +659,18 @@ setup_stack (void **esp)
 {
   uint8_t *kpage;
   bool success = false;
-
   kpage = get_page (PAL_USER | PAL_ZERO);
 #ifndef VM
   if (kpage != NULL) 
     {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
+      if (install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true)) {
         *esp = PHYS_BASE;
-      else
+      }
+      else {
         free_page (kpage);
+      }
     }
-  return success;
+  return true;
 #else
   struct supp_page_table_entry *s = malloc(sizeof(struct supp_page_table_entry));
   
@@ -674,14 +678,15 @@ setup_stack (void **esp)
     free_page(kpage);
     return success;
   }
-  s->upage = ((uint8_t *) PHYS_BASE) - PGSIZE; 
+  void *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
+  s->upage = upage;
   s->flags = 0;
   s->kpage = kpage;
   s->flags |= O_WRITABLE;
   s->flags |= O_PG_ALL_ZERO;
-  if(!install_page (s->upage, kpage, true)){
-    free(s);
+  if(!install_page (upage, kpage, true)){
     free_page(kpage);
+    free(s);
     return false;
   }
   struct thread *t = thread_current(); 
@@ -697,20 +702,26 @@ handle_mm_fault (struct supp_page_table_entry *s)
 {
 
   uint8_t flags = s->flags & O_PG_MASK;
-  void *new_page = get_page(PAL_USER | PAL_ZERO);
-  if (new_page == NULL) {
-    return false;
-  }
-
+  void *new_page = NULL;
   bool success = false;
   switch (flags) {
     case O_PG_ALL_ZERO:
+      new_page = get_page(PAL_USER | PAL_ZERO);
+      if (new_page == NULL) {
+        return false;
+      }
       memset(new_page, 0, PGSIZE);
       success = true;
       break;
-
     case O_PG_MEM:
+      new_page = s->kpage;
+      success = true;
+      break;
     case O_PG_FS:
+      new_page = get_page(PAL_USER | PAL_ZERO);
+      if (new_page == NULL) {
+        return false;
+      }
       file_seek(s->file, s->ofs);
       if (file_read(s->file, new_page, s->read_bytes) != (int) s->read_bytes) {
         free_page(new_page);
@@ -726,27 +737,23 @@ handle_mm_fault (struct supp_page_table_entry *s)
       break;
 
     default:
-      success = false;
-      break;
+      return success;
   }
 
-  if (!success) {
-    free_page(new_page);
-    return false;
+  if (success) {
+    bool writable = (s->flags & O_WRITABLE) != 0;
+    if (!install_page(s->upage, new_page, writable)) {
+      free_page(new_page);
+      return false;
+    }
+    s->kpage = new_page;
+    uint8_t tmp_flags = s->flags & O_NON_PG_MASK;
+    s->flags = tmp_flags | O_PG_MEM;
   }
-
-  bool writable = (s->flags & O_WRITABLE) != 0;
-  if (!install_page(s->upage, new_page, writable)) {
-    free_page(new_page);
-    return false;
-  }
-  s->kpage = new_page;
-  uint8_t tmp_flags = s->flags & O_NON_PG_MASK;
-  s->flags = tmp_flags | O_PG_MEM;
-  return true;
+  return success;
 }
-
 #endif
+
 /* Adds a mapping from user virtual address UPAGE to kernel
    virtual address KPAGE to the page table.
    If WRITABLE is true, the user process may modify the page;

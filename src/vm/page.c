@@ -7,7 +7,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "vm/page.h"
-
+#include "vm/frame.h"
 unsigned
 supp_hash (const struct hash_elem *s_, void *aux UNUSED)
 {
@@ -25,7 +25,7 @@ supp_less (const struct hash_elem *a_, const struct hash_elem *b_, void *aux UNU
 }
 
 struct supp_page_table_entry*
-search_by_addr(struct thread *t, void * addr)
+search_by_addr (struct thread *t, void * addr)
 {
   struct supp_page_table_entry tmp;
   tmp.upage = (void *) pg_round_down(addr);
@@ -35,3 +35,19 @@ search_by_addr(struct thread *t, void * addr)
   }
   return hash_entry(tmp_elem, struct supp_page_table_entry, elem);
 }
+
+void
+grow_stack (struct thread *t, void *addr) {
+  struct supp_page_table_entry *s = malloc(sizeof(struct supp_page_table_entry));
+  void *upage = (void *) pg_round_down(addr);
+  s->upage = upage;
+  s->kpage = NULL;  // Will be set in handle_mm_fault
+  s->file = NULL;   // No file associated with stack pages
+  s->ofs = 0;
+  s->read_bytes = 0;
+  s->zero_bytes = PGSIZE;
+  s->flags = O_PG_ALL_ZERO | O_WRITABLE;
+
+  hash_insert(t->supp_page_table, &(s->elem));
+}
+

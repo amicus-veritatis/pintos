@@ -12,6 +12,9 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "filesys/directory.h"
+#ifdef VM
+#include "vm/page.h"
+#endif
 static void syscall_handler (struct intr_frame *);
 
 /* System call functions */
@@ -47,6 +50,9 @@ syscall_handler (struct intr_frame *f)
 	uint32_t* esp = (uint32_t*) f->esp;
 	check_address(esp);
 	int syscall_number = *esp;
+#ifdef VM
+  thread_current()->esp = f->esp;
+#endif
 	switch (syscall_number) {
 		case SYS_HALT:
 			halt();
@@ -139,9 +145,18 @@ is_valid_fd_num (const int fd_num) {
  * 2. Virtual memory related
  */
 void check_address(const void *addr) {
-	if (!is_valid_user_vaddr(addr) || pagedir_get_page (thread_current() -> pagedir,addr) == NULL) {
+#ifndef VM
+  if (!is_valid_user_vaddr(addr) || pagedir_get_page (thread_current() -> pagedir,addr) == NULL) {
 		exit(-1);
 	} 
+#else
+  if (!is_valid_user_vaddr(addr)) {
+    exit(-1);
+  }
+  if (search_by_addr(thread_current(), addr) == NULL) {
+    exit(-1);
+  }
+#endif
 }
 
 void check_fd_num (const int fd) {
