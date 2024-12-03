@@ -9,8 +9,8 @@
 #include <hash.h>
 #include "lib/kernel/hash.h"
 
-#define O_WRITABLE 0x08
-#define O_DIRTY 0x04
+#define O_DIRTY 0x08
+#define O_WRITABLE 0x04
 
 #define O_NON_PG_MASK 0x0C
 #define O_PG_MASK 0x03

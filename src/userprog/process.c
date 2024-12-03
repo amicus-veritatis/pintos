@@ -591,8 +591,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
-
+#ifndef VM
   file_seek (file, ofs);
+#endif
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -627,15 +628,21 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       }
       s->upage = upage;
       s->flags = 0;
-      s->file = file;
-      s->ofs = ofs;
       s->read_bytes = page_read_bytes;
       s->zero_bytes = page_zero_bytes;
       
+      if (page_read_bytes > 0) {
+        s->file = file;
+        s->ofs = ofs;
+        s->flags |= O_PG_FS;
+      } else {
+        s->file = NULL;
+        s->ofs = 0;
+        s->flags |= O_PG_ALL_ZERO;
+      }
       if (writable) {
         s->flags |= O_WRITABLE;
       }
-      s->flags |= O_PG_FS;
       struct thread *t = thread_current();
       hash_insert(t->supp_page_table, &(s->elem));
 #endif
@@ -646,7 +653,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
 #ifdef VM
-      ofs += PGSIZE;
+      ofs += page_read_bytes;
 #endif
     }
   return true;
@@ -714,9 +721,7 @@ handle_mm_fault (struct supp_page_table_entry *s)
       success = true;
       break;
     case O_PG_MEM:
-      new_page = s->kpage;
-      success = true;
-      break;
+      return true;
     case O_PG_FS:
       new_page = get_page(PAL_USER | PAL_ZERO);
       if (new_page == NULL) {

@@ -14,7 +14,7 @@
 #include "vm/page.h"
 #include "vm/frame.h"
 #include "userprog/process.h"
-#define STACK_LIMIT 0x08048000
+#define STACK_LIMIT (8 << 20)
 #endif
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -180,7 +180,7 @@ page_fault (struct intr_frame *f)
     if (pg_round_down(fault_addr) < PHYS_BASE - STACK_LIMIT) {
       goto KERNEL_GA_KILL;
     }
-    if (fault_addr < pg_round_down(f->esp - 32)) {
+    if (fault_addr < f->esp - 32) {
       goto KERNEL_GA_KILL;
     }
     grow_stack(t, fault_addr); // grow_stack();
