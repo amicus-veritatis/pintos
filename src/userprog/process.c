@@ -630,14 +630,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       s->flags = 0;
       s->read_bytes = page_read_bytes;
       s->zero_bytes = page_zero_bytes;
-      
+      s->file = file; 
+      s->ofs = ofs;
       if (page_read_bytes > 0) {
-        s->file = file;
-        s->ofs = ofs;
         s->flags |= O_PG_FS;
       } else {
-        s->file = NULL;
-        s->ofs = 0;
         s->flags |= O_PG_ALL_ZERO;
       }
       if (writable) {
@@ -691,7 +688,7 @@ setup_stack (void **esp)
   s->kpage = kpage;
   s->flags |= O_WRITABLE;
   s->flags |= O_PG_ALL_ZERO;
-  if(!install_page (upage, kpage, true)){
+  if(!handle_mm_fault(s)){
     free_page(kpage);
     free(s);
     return false;
@@ -721,9 +718,14 @@ handle_mm_fault (struct supp_page_table_entry *s)
       success = true;
       break;
     case O_PG_MEM:
-      return true;
+      new_page = get_page(PAL_USER);
+      if (new_page = NULL) {
+        return false;
+      }
+      success = true;
+      break;
     case O_PG_FS:
-      new_page = get_page(PAL_USER | PAL_ZERO);
+      new_page = get_page(PAL_USER);
       if (new_page == NULL) {
         return false;
       }
