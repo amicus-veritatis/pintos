@@ -14,6 +14,7 @@
 #include "filesys/directory.h"
 #ifdef VM
 #include "vm/page.h"
+#include "vm/frame.h"
 #endif
 static void syscall_handler (struct intr_frame *);
 
@@ -139,7 +140,91 @@ static bool
 is_valid_fd_num (const int fd_num) {
 	return fd_num >= MIN_FILENO && fd_num < FD_MAX_SIZE;
 }
+#ifdef VM
+/*
+static inline fs_pin (void *addr, uint32_t size)
+{
+  for (void *p = addr; p < addr + size; p += PGSIZE) {
+    struct frame_table_entry *f = search_by_page(pg_round_down(p));
+    f->status = FRAME_PINNED;
+    handle_mm_fault(search_by_page(pg_round_down(p)));
+  }
+}
+static inline fs_unpin (void *addr, uint32_t size)
+{
+  for (void *p = addr; p < addr + size; p += PGSIZE) {
+    struct frame_table_entry *f = search_by_page(pg_round_down(p));
+    f->status = FRAME_USED;
+  }
+} */
+static inline void fs_pin(void *addr, uint32_t size)
+{
+  void *start = addr;
+  void *end = addr + size;
+  void *upage;
 
+  for (upage = pg_round_down(start); upage < end; upage += PGSIZE)
+  {
+    struct supp_page_table_entry *s = search_by_addr(thread_current(), upage);
+    if (s == NULL)
+    {
+      // Page not mapped; handle stack growth or terminate.
+      // For simplicity, we'll terminate the process.
+      exit(-1);
+    }
+
+    // Ensure the page is loaded into memory
+    if (s->kpage == NULL)
+    {
+      if (!handle_mm_fault(s))
+      {
+        // handle_mm_fault failed; terminate the process
+        exit(-1);
+      }
+    }
+
+    // Now, get the frame table entry
+    struct frame_table_entry *f = search_by_page(s->kpage);
+    if (f == NULL)
+    {
+      // Should not happen; terminate the process
+      exit(-1);
+    }
+
+    // Set the frame status to FRAME_PINNED
+    set_pinned(f->kpage, true);
+  }
+}
+
+static inline void fs_unpin(void *addr, uint32_t size)
+{
+  void *start = addr;
+  void *end = addr + size;
+  void *upage;
+
+  for (upage = pg_round_down(start); upage < end; upage += PGSIZE)
+  {
+    struct supp_page_table_entry *s = search_by_addr(thread_current(), upage);
+    if (s == NULL)
+    {
+      // Page not mapped; terminate the process
+      exit(-1);
+    }
+
+    // Get the frame table entry
+    struct frame_table_entry *f = search_by_page(s->kpage);
+    if (f == NULL)
+    {
+      // Should not happen; terminate the process
+      exit(-1);
+    }
+
+    // Set the frame status to FRAME_USED
+    set_pinned(f->kpage, false);
+  }
+}
+
+#endif
 /* Two conditions that terminate the process
  * 1. addr is not a valid user vaddr
  * 2. Virtual memory related
@@ -287,11 +372,17 @@ write (int fd, const void *buffer, unsigned size)
 	else if (fd >= MIN_FILENO && fd < FD_MAX_SIZE) {
 		/* fprint has not been implemented yet! */
 		lock_acquire(&fs_lock);
+#ifdef VM
+    fs_pin(buffer, size);
+#endif
 		struct thread *t = thread_current();
 		int ret = 0;
 		if (t->fd[fd] != NULL) {
 			ret = file_write(t->fd[fd], buffer, size);
 		}
+#ifdef VM
+    fs_unpin(buffer, size);
+#endif
 		lock_release(&fs_lock);
 		return ret;
 	}
@@ -312,19 +403,31 @@ int read(int fd, void *buffer, unsigned size) {
         	/* We do not check \0
 		 * Trust programmers! */
 		lock_acquire(&fs_lock);
+#ifdef VM
+    fs_pin(buffer, size);
+#endif
 		char *buf = buffer;
-        	*buf = input_getc();
+    *buf = input_getc();
+#ifdef VM
+    fs_unpin(buffer, size);
+#endif
 		lock_release(&fs_lock);
         	return size;	
 	} 
 	else if (fd >= MIN_FILENO && fd < FD_MAX_SIZE) {
 		lock_acquire(&fs_lock);
+#ifdef VM
+    fs_pin(buffer, size);
+#endif
 		struct thread *t = thread_current();
 		if (t->fd[fd] == NULL) {
 			lock_release(&fs_lock);
 			return -1;
 		}
 		int f = file_read(t->fd[fd], buffer, size);
+#ifdef VM
+    fs_unpin(buffer, size);
+#endif
 		lock_release(&fs_lock);
 		return f;
 	}

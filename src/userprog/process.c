@@ -22,12 +22,15 @@
 #ifdef VM
 #include <hash.h>
 #include "lib/kernel/hash.h"
+#include "vm/swap.h"
 #include "vm/frame.h"
 #include "vm/page.h"
 #endif
 #ifdef VM
-#define get_page(flags) frame_get_page(flags)
-#define free_page(page) frame_free_page(page)
+#define frame_page(flags, upage) frame_get_page(flags, upage)
+#define frame_free(page) frame_free_page(page)
+#define get_page(flags) palloc_get_page(flags)
+#define free_page(page) palloc_free_page(page)
 #else
 #define get_page(flags) palloc_get_page(flags)
 #define free_page(page) palloc_free_page(page)
@@ -228,6 +231,10 @@ process_exit (void)
    }
 
 #ifdef VM
+  if (cur->file != NULL) {
+    file_allow_write(cur->file);
+    file_close(cur->file);
+  }
    hash_destroy(cur->supp_page_table, NULL);
    free(cur->supp_page_table);
    cur->supp_page_table = NULL;
@@ -390,6 +397,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
+#ifdef VM
+  t->file = file;
+  file_deny_write(file);
+#endif
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -627,15 +638,17 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         return false;
       }
       s->upage = upage;
+      s->kpage = NULL;
       s->flags = 0;
       s->read_bytes = page_read_bytes;
       s->zero_bytes = page_zero_bytes;
       s->file = file; 
       s->ofs = ofs;
-      if (page_read_bytes > 0) {
-        s->flags |= O_PG_FS;
-      } else {
+      s->flags &= O_NON_PG_MASK;
+      if (page_read_bytes == 0) {
         s->flags |= O_PG_ALL_ZERO;
+      } else {
+        s->flags |= O_PG_FS;
       }
       if (writable) {
         s->flags |= O_WRITABLE;
@@ -663,8 +676,8 @@ setup_stack (void **esp)
 {
   uint8_t *kpage;
   bool success = false;
-  kpage = get_page (PAL_USER | PAL_ZERO);
 #ifndef VM
+  kpage = get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
       if (install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true)) {
@@ -676,23 +689,19 @@ setup_stack (void **esp)
     }
   return true;
 #else
+  void *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
   struct supp_page_table_entry *s = malloc(sizeof(struct supp_page_table_entry));
   
   if (s == NULL) {
-    free_page(kpage);
     return success;
   }
-  void *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
   s->upage = upage;
   s->flags = 0;
-  s->kpage = kpage;
+  s->kpage = NULL;
+  s->file = NULL;
   s->flags |= O_WRITABLE;
   s->flags |= O_PG_ALL_ZERO;
-  if(!handle_mm_fault(s)){
-    free_page(kpage);
-    free(s);
-    return false;
-  }
+  s->flags |= O_PG_MEM;
   struct thread *t = thread_current(); 
   hash_insert(t->supp_page_table, &(s->elem));
   *esp = PHYS_BASE;
@@ -704,45 +713,28 @@ setup_stack (void **esp)
 bool
 handle_mm_fault (struct supp_page_table_entry *s)
 {
-
   uint8_t flags = s->flags & O_PG_MASK;
-  void *new_page = NULL;
   bool success = false;
+  void *new_page = frame_page(PAL_USER, s->upage);
+  ASSERT(new_page != NULL);
   switch (flags) {
     case O_PG_ALL_ZERO:
-      new_page = get_page(PAL_USER | PAL_ZERO);
-      if (new_page == NULL) {
-        return false;
-      }
       memset(new_page, 0, PGSIZE);
       success = true;
       break;
-    case O_PG_MEM:
-      new_page = get_page(PAL_USER);
-      if (new_page = NULL) {
-        return false;
-      }
-      success = true;
-      break;
     case O_PG_FS:
-      new_page = get_page(PAL_USER);
-      if (new_page == NULL) {
-        return false;
-      }
       file_seek(s->file, s->ofs);
       if (file_read(s->file, new_page, s->read_bytes) != (int) s->read_bytes) {
-        free_page(new_page);
+        frame_free(new_page);
         return false;
       }
       memset(new_page + s->read_bytes, 0, s->zero_bytes);
       success = true;
       break;
-
     case O_PG_SWAP:
-      PANIC ("SWAP NOT IMPLEMENTED YET");
-      success = false;  // For now, return false until swap is implemented
+      swap_in(s->swap_idx, new_page);
+      success = true;
       break;
-
     default:
       return success;
   }
@@ -750,12 +742,12 @@ handle_mm_fault (struct supp_page_table_entry *s)
   if (success) {
     bool writable = (s->flags & O_WRITABLE) != 0;
     if (!install_page(s->upage, new_page, writable)) {
-      free_page(new_page);
+      frame_free(new_page);
       return false;
     }
     s->kpage = new_page;
-    uint8_t tmp_flags = s->flags & O_NON_PG_MASK;
-    s->flags = tmp_flags | O_PG_MEM;
+    s->flags = (s->flags & O_NON_PG_MASK) | O_PG_MEM | flags;
+    set_pinned(s->kpage, false);
   }
   return success;
 }
