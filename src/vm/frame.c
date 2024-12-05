@@ -98,6 +98,7 @@ frame_get_page(enum palloc_flags flags)
 {
   void *page = palloc_get_page(flags);
   if (page == NULL) {
+    PANIC("봇치짱 페이지 카시테~");
     return NULL;
   }
 

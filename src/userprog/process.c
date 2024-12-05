@@ -208,7 +208,13 @@ void
 process_exit (void)
 {
    struct thread *cur = thread_current ();
-   
+#ifdef VM
+   if (cur->file != NULL) {
+    file_allow_write(cur->file);
+    file_close(cur->file);
+    cur->file = NULL;
+  }
+#endif
    for (int fd=MIN_FILENO; fd<FD_MAX_SIZE; fd++) {
     struct file *f = cur->fd[fd];
     if (f != NULL) {
@@ -390,7 +396,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
-
+#ifdef VM
+  file_deny_write(file);
+  t->file = file;
+#endif
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -627,6 +636,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         return false;
       }
       s->upage = upage;
+      s->kpage = NULL;
       s->flags = 0;
       s->read_bytes = page_read_bytes;
       s->zero_bytes = page_zero_bytes;
@@ -663,8 +673,8 @@ setup_stack (void **esp)
 {
   uint8_t *kpage;
   bool success = false;
-  kpage = get_page (PAL_USER | PAL_ZERO);
 #ifndef VM
+  kpage = get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
       if (install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true)) {
@@ -679,20 +689,14 @@ setup_stack (void **esp)
   struct supp_page_table_entry *s = malloc(sizeof(struct supp_page_table_entry));
   
   if (s == NULL) {
-    free_page(kpage);
     return success;
   }
   void *upage = ((uint8_t *) PHYS_BASE) - PGSIZE;
   s->upage = upage;
   s->flags = 0;
-  s->kpage = kpage;
+  s->kpage = NULL;
   s->flags |= O_WRITABLE;
   s->flags |= O_PG_ALL_ZERO;
-  if(!handle_mm_fault(s)){
-    free_page(kpage);
-    free(s);
-    return false;
-  }
   struct thread *t = thread_current(); 
   hash_insert(t->supp_page_table, &(s->elem));
   *esp = PHYS_BASE;
@@ -718,12 +722,7 @@ handle_mm_fault (struct supp_page_table_entry *s)
       success = true;
       break;
     case O_PG_MEM:
-      new_page = get_page(PAL_USER);
-      if (new_page = NULL) {
-        return false;
-      }
-      success = true;
-      break;
+      return true;
     case O_PG_FS:
       new_page = get_page(PAL_USER);
       if (new_page == NULL) {

@@ -174,21 +174,16 @@ page_fault (struct intr_frame *f)
   struct thread *t = thread_current();
   struct supp_page_table_entry *s = search_by_addr(t, fault_addr);
   if (s == NULL) {
-    if (!is_user_vaddr(fault_addr)) {
+    if (!is_user_vaddr(pg_round_down(fault_addr))) {
       goto KERNEL_GA_KILL;
     }
-    if (pg_round_down(fault_addr) < PHYS_BASE - STACK_LIMIT) {
+    if (fault_addr < PHYS_BASE - STACK_LIMIT) {
       goto KERNEL_GA_KILL;
     }
     if (fault_addr < f->esp - 32) {
       goto KERNEL_GA_KILL;
     }
     grow_stack(t, fault_addr); // grow_stack();
-    //
-    s = search_by_addr(t, fault_addr);
-    if (s == NULL || !handle_mm_fault(s)) {
-        goto KERNEL_GA_KILL;
-    }
   } else {
     if (!handle_mm_fault(s)) {
       PANIC("handle_mm_fault() failed");
