@@ -157,7 +157,7 @@ static inline fs_unpin (void *addr, uint32_t size)
     f->status = FRAME_USED;
   }
 } */
-static inline void fs_pin(void *addr, uint32_t size)
+static inline void fs_pin(const void *addr, uint32_t size)
 {
   void *start = addr;
   void *end = addr + size;
@@ -168,35 +168,25 @@ static inline void fs_pin(void *addr, uint32_t size)
     struct supp_page_table_entry *s = search_by_addr(thread_current(), upage);
     if (s == NULL)
     {
-      // Page not mapped; handle stack growth or terminate.
-      // For simplicity, we'll terminate the process.
-      exit(-1);
+			exit(-1);
     }
 
-    // Ensure the page is loaded into memory
     if (s->kpage == NULL)
     {
       if (!handle_mm_fault(s))
       {
-        // handle_mm_fault failed; terminate the process
-        exit(-1);
+        PANIC("?");
       }
     }
 
-    // Now, get the frame table entry
     struct frame_table_entry *f = search_by_page(s->kpage);
-    if (f == NULL)
-    {
-      // Should not happen; terminate the process
-      exit(-1);
-    }
-
-    // Set the frame status to FRAME_PINNED
-    set_pinned(f->kpage, true);
+		if (f != NULL) {
+    	set_pinned(f->kpage, true);
+		}
   }
 }
 
-static inline void fs_unpin(void *addr, uint32_t size)
+static inline void fs_unpin(const void *addr, uint32_t size)
 {
   void *start = addr;
   void *end = addr + size;
@@ -207,20 +197,14 @@ static inline void fs_unpin(void *addr, uint32_t size)
     struct supp_page_table_entry *s = search_by_addr(thread_current(), upage);
     if (s == NULL)
     {
-      // Page not mapped; terminate the process
-      exit(-1);
+			PANIC("unpin error");
     }
 
-    // Get the frame table entry
     struct frame_table_entry *f = search_by_page(s->kpage);
-    if (f == NULL)
+    if (f != NULL)
     {
-      // Should not happen; terminate the process
-      exit(-1);
-    }
-
-    // Set the frame status to FRAME_USED
-    set_pinned(f->kpage, false);
+    	set_pinned(f->kpage, false);
+		}
   }
 }
 

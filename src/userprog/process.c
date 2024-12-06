@@ -27,8 +27,6 @@
 #include "vm/page.h"
 #endif
 #ifdef VM
-#define frame_page(flags, upage) frame_get_page(flags, upage)
-#define frame_free(page) frame_free_page(page)
 #define get_page(flags) palloc_get_page(flags)
 #define free_page(page) palloc_free_page(page)
 #else
@@ -235,12 +233,14 @@ process_exit (void)
     file_allow_write(cur->file);
     file_close(cur->file);
   }
-   hash_destroy(cur->supp_page_table, NULL);
-   free(cur->supp_page_table);
-   cur->supp_page_table = NULL;
+  if (cur->supp_page_table != NULL) {
+    hash_destroy(cur->supp_page_table, supp_destroy);
+    free(cur->supp_page_table);
+    cur->supp_page_table = NULL;
+  }
 #endif
 
-   uint32_t *pd;
+  uint32_t *pd;
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -644,12 +644,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       s->zero_bytes = page_zero_bytes;
       s->file = file; 
       s->ofs = ofs;
-      s->flags &= O_NON_PG_MASK;
-      if (page_read_bytes == 0) {
-        s->flags |= O_PG_ALL_ZERO;
-      } else {
-        s->flags |= O_PG_FS;
-      }
+      s->flags = O_PG_FS;
       if (writable) {
         s->flags |= O_WRITABLE;
       }
@@ -714,7 +709,10 @@ handle_mm_fault (struct supp_page_table_entry *s)
 {
   uint8_t flags = s->flags & O_PG_MASK;
   bool success = false;
-  void *new_page = frame_page(PAL_USER, s->upage);
+  if (flags == O_PG_MEM) {
+    return true;
+  }
+  void *new_page = frame_get_page(PAL_USER, s->upage);
   ASSERT(new_page != NULL);
   switch (flags) {
     case O_PG_ALL_ZERO:
@@ -724,7 +722,7 @@ handle_mm_fault (struct supp_page_table_entry *s)
     case O_PG_FS:
       file_seek(s->file, s->ofs);
       if (file_read(s->file, new_page, s->read_bytes) != (int) s->read_bytes) {
-        frame_free(new_page);
+        frame_free_page(new_page);
         return false;
       }
       memset(new_page + s->read_bytes, 0, s->zero_bytes);
@@ -741,11 +739,11 @@ handle_mm_fault (struct supp_page_table_entry *s)
   if (success) {
     bool writable = (s->flags & O_WRITABLE) != 0;
     if (!install_page(s->upage, new_page, writable)) {
-      frame_free(new_page);
+      frame_free_page(new_page);
       return false;
     }
     s->kpage = new_page;
-    s->flags = (s->flags & ~O_PG_MASK) | O_PG_MEM;
+    s->flags = (s->flags & O_NON_PG_MASK) | O_PG_MEM;
     set_pinned(s->kpage, false);
   }
   return success;

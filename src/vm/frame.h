@@ -31,4 +31,5 @@ void frame_free_page (void *);
 static fid_t allocate_fid(void);
 struct frame_table_entry* search_by_fid(fid_t);
 struct frame_table_entry* search_by_page(void *);
+void set_pinned (void *, bool);
 #endif /* vm/frame.h */

@@ -8,6 +8,7 @@
 #include "threads/vaddr.h"
 #include "vm/page.h"
 #include "vm/frame.h"
+
 unsigned
 supp_hash (const struct hash_elem *s_, void *aux UNUSED)
 {
@@ -41,8 +42,8 @@ grow_stack (struct thread *t, void *addr) {
   struct supp_page_table_entry *s = malloc(sizeof(struct supp_page_table_entry));
   void *upage = (void *) pg_round_down(addr);
   s->upage = upage;
-  s->kpage = NULL;  // Will be set in handle_mm_fault
-  s->file = NULL;   // No file associated with stack pages
+  s->kpage = NULL;
+  s->file = NULL;
   s->ofs = 0;
   s->read_bytes = 0;
   s->zero_bytes = PGSIZE;
@@ -51,3 +52,12 @@ grow_stack (struct thread *t, void *addr) {
   hash_insert(t->supp_page_table, &(s->elem));
 }
 
+void
+supp_destroy (struct hash_elem *s_, void *aux UNUSED)
+{
+    struct supp_page_table_entry *s = hash_entry(s_, struct supp_page_table_entry, elem);
+    if ((s->flags & O_PG_SWAP) && s->swap_idx != (size_t) -1) {
+      swap_free(s->swap_idx);
+    }
+    free(s);
+}

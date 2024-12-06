@@ -46,5 +46,4 @@ bool supp_less (const struct hash_elem *, const struct hash_elem *, void * UNUSE
 struct supp_page_table_entry* search_by_addr(struct thread *, void *);
 void grow_stack (struct thread *, void *);
 void supp_destroy (struct hash_elem *, void * UNUSED);
-
 #endif

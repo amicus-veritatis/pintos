@@ -46,6 +46,13 @@ size_t swap_out (void *addr)
   return idx;
 }
 
+void
+swap_free (size_t idx)
+{
+  lock_acquire(&swap_lock);
+  bitmap_set(swap_bitmap, idx, true);
+  lock_release(&swap_lock);
+}
 
 /* 
 void

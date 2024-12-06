@@ -90,6 +90,9 @@ search_by_fid(fid_t fid)
   }
   return hash_entry(tmp_elem, struct frame_table_entry, fid_elem);
 }
+struct frame_table_entry* clock_next (void);
+struct frame_table_entry* frame_evicted (void);
+void evict_cleanup(struct frame_table_entry *, struct supp_page_table_entry *);
 
 struct frame_table_entry*
 clock_next (void)
@@ -107,7 +110,7 @@ clock_next (void)
 
 
 struct frame_table_entry*
-frame_evicted (struct thread* t)
+frame_evicted ()
 {
   for (struct frame_table_entry *f = clock_next();;f = clock_next()) {
     if (f->status == FRAME_PINNED) {
@@ -129,9 +132,8 @@ frame_get_page(enum palloc_flags flags, void *upage)
 {
   lock_acquire(&frame_lock);
   void *page = palloc_get_page(flags);
-  struct thread *t = thread_current();
   if (page == NULL) {
-    struct frame_table_entry *evicted = frame_evicted(t);
+    struct frame_table_entry *evicted = frame_evicted();
     struct supp_page_table_entry *s = search_by_addr(evicted->t, evicted->upage);
     evict_cleanup(evicted, s);
     page = palloc_get_page(PAL_USER | flags);
@@ -148,7 +150,7 @@ frame_get_page(enum palloc_flags flags, void *upage)
   frame->kpage = page;
   frame->upage = upage;
   frame->status = FRAME_PINNED;
-  frame->t = t;
+  frame->t = thread_current();
   hash_insert(&frame_hash_map_by_kpage, &(frame->kpage_elem));
   hash_insert(&frame_hash_map_by_fid, &(frame->fid_elem));
   list_push_back(&frame_list, &(frame->list_elem));
@@ -197,12 +199,12 @@ frame_free_page(void *page)
   if (frame == NULL) {
     PANIC ("Such page does not exist!");
   }
-
+  palloc_free_page(page);
   lock_acquire(&frame_lock);
   hash_delete(&frame_hash_map_by_kpage, &frame->kpage_elem);
   hash_delete(&frame_hash_map_by_fid, &frame->fid_elem);
   list_remove(&frame->list_elem);
-  palloc_free_page(page);
+
   free(frame);
   lock_release(&frame_lock);
 }
