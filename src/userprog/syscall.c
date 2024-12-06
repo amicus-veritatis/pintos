@@ -238,9 +238,6 @@ void check_address(const void *addr) {
   if (!is_valid_user_vaddr(addr)) {
     exit(-1);
   }
-  if (search_by_addr(thread_current(), addr) == NULL) {
-    exit(-1);
-  }
 #endif
 }
 

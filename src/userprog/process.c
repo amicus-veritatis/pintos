@@ -701,7 +701,6 @@ setup_stack (void **esp)
   s->file = NULL;
   s->flags |= O_WRITABLE;
   s->flags |= O_PG_ALL_ZERO;
-  s->flags |= O_PG_MEM;
   struct thread *t = thread_current(); 
   hash_insert(t->supp_page_table, &(s->elem));
   *esp = PHYS_BASE;
@@ -746,7 +745,7 @@ handle_mm_fault (struct supp_page_table_entry *s)
       return false;
     }
     s->kpage = new_page;
-    s->flags = (s->flags & O_NON_PG_MASK) | O_PG_MEM | flags;
+    s->flags = (s->flags & ~O_PG_MASK) | O_PG_MEM;
     set_pinned(s->kpage, false);
   }
   return success;

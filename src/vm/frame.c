@@ -132,7 +132,7 @@ frame_get_page(enum palloc_flags flags, void *upage)
   struct thread *t = thread_current();
   if (page == NULL) {
     struct frame_table_entry *evicted = frame_evicted(t);
-    struct supp_page_table_entry *s = search_by_addr(t, evicted->upage);
+    struct supp_page_table_entry *s = search_by_addr(evicted->t, evicted->upage);
     evict_cleanup(evicted, s);
     page = palloc_get_page(PAL_USER | flags);
     ASSERT (page != NULL);
@@ -164,18 +164,18 @@ frame_get_page(enum palloc_flags flags, void *upage)
 void
 evict_cleanup(struct frame_table_entry *evicted, struct supp_page_table_entry *s)
 {
-  evicted->status = FRAME_PINNED;
   s->swap_idx = swap_out(evicted->kpage);
+	bool was_dirty = pagedir_is_dirty(evicted->t->pagedir, evicted->upage);
   pagedir_clear_page(evicted->t->pagedir, evicted->upage);
+  if (was_dirty) {
+    s->flags |= O_DIRTY;
+  }
+
   s->kpage = NULL;
   
   s->flags &= ~O_PG_MASK;
   s->flags |= O_PG_SWAP;
   s->flags &= ~O_PG_MEM;
-
-  if (pagedir_is_dirty(evicted->t->pagedir, evicted->upage)) {
-    s->flags |= O_DIRTY;
-  }
   hash_delete(&frame_hash_map_by_kpage, &evicted->kpage_elem);
   hash_delete(&frame_hash_map_by_fid, &evicted->fid_elem);
   list_remove(&evicted->list_elem);

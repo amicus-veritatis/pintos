@@ -183,7 +183,7 @@ page_fault (struct intr_frame *f)
     if (fault_addr < f->esp - 32) {
       goto KERNEL_GA_KILL;
     }
-    grow_stack(t, fault_addr); // grow_stack();
+    grow_stack(t, fault_addr);
   } else {
     if (!handle_mm_fault(s)) {
       PANIC("handle_mm_fault() failed");
