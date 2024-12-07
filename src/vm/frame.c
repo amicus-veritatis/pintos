@@ -1,4 +1,5 @@
 #include <hash.h>
+#include <list.h>
 
 #include "vm/frame.h"
 #include "vm/page.h"
@@ -7,6 +8,7 @@
 #include "threads/malloc.h"
 #include "threads/vaddr.h"
 #include "userprog/pagedir.h"
+#include <lib/debug.h>
 struct lock frame_lock;
 struct hash frame_hash_map_by_kpage;
 struct hash frame_hash_map_by_fid;
@@ -52,6 +54,7 @@ frame_init()
   hash_init(&frame_hash_map_by_fid, frame_fid_hash, frame_fid_less, NULL);
   list_init(&frame_list);
   lock_init(&fid_lock);
+  clock = NULL;
 }
 
 static fid_t
@@ -122,6 +125,7 @@ frame_evicted ()
     }
     return f;
   }
+  NOT_REACHED();
 }
 /* This function actually allocates frame_table_entry, not page,
  * but because this function intends to replace palloc_get_page,
@@ -131,7 +135,7 @@ void*
 frame_get_page(enum palloc_flags flags, void *upage)
 {
   lock_acquire(&frame_lock);
-  void *page = palloc_get_page(flags);
+  void *page = palloc_get_page(PAL_USER | flags);
   if (page == NULL) {
     struct frame_table_entry *evicted = frame_evicted();
     struct supp_page_table_entry *s = search_by_addr(evicted->t, evicted->upage);
@@ -149,7 +153,7 @@ frame_get_page(enum palloc_flags flags, void *upage)
   frame->fid = allocate_fid();
   frame->kpage = page;
   frame->upage = upage;
-  frame->status = FRAME_PINNED;
+  frame->status = FRAME_USED;
   frame->t = thread_current();
   hash_insert(&frame_hash_map_by_kpage, &(frame->kpage_elem));
   hash_insert(&frame_hash_map_by_fid, &(frame->fid_elem));
@@ -167,19 +171,37 @@ void
 evict_cleanup(struct frame_table_entry *evicted, struct supp_page_table_entry *s)
 {
   s->swap_idx = swap_out(evicted->kpage);
-	bool was_dirty = pagedir_is_dirty(evicted->t->pagedir, evicted->upage);
-  pagedir_clear_page(evicted->t->pagedir, evicted->upage);
-  if (was_dirty) {
+	if (pagedir_is_dirty(evicted->t->pagedir, evicted->upage)) {
     s->flags |= O_DIRTY;
-  }
+  };
 
   s->kpage = NULL;
-  
-  s->flags &= ~O_PG_MASK;
-  s->flags |= O_PG_SWAP;
-  s->flags &= ~O_PG_MEM;
+  switch (s->flags & O_PG_MASK) {
+    case O_PG_MEM:
+      PANIC("THIS SHOULD NOT HAPPEN");
+      break;
+    case O_PG_ALL_ZERO:
+      if (s->flags & O_DIRTY) {
+        s->swap_idx = swap_out(evicted->kpage);
+        s->flags = (s->flags & ~O_PG_MASK) | O_PG_SWAP;
+      }
+      break;
+    case O_PG_FS:
+      if (s->flags & O_DIRTY) {
+        file_write_at(s->file, s->upage, s->read_bytes, s->ofs);
+      }
+      break;
+    case O_PG_SWAP:
+      break;
+    default:
+      PANIC("????????");
+  }
   hash_delete(&frame_hash_map_by_kpage, &evicted->kpage_elem);
   hash_delete(&frame_hash_map_by_fid, &evicted->fid_elem);
+  pagedir_clear_page(evicted->t->pagedir, pg_round_down(evicted->upage));
+  if (&(evicted->list_elem) == clock) {
+    clock_next();
+  }
   list_remove(&evicted->list_elem);
   palloc_free_page(evicted->kpage);
   free(evicted);
@@ -212,10 +234,12 @@ frame_free_page(void *page)
 void
 set_pinned (void *kpage, bool pinned)
 {
+  lock_acquire(&frame_lock);
   struct frame_table_entry *f = search_by_page(kpage);
   if (pinned) {
     f->status = FRAME_PINNED;
   } else {
     f->status = FRAME_USED;
   }
+  lock_release(&frame_lock);
 }

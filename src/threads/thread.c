@@ -586,7 +586,6 @@ init_thread (struct thread *t, const char *name, int priority)
 #endif
 #ifdef VM
   t->supp_page_table = NULL;
-  t->esp = NULL;
   t->file = NULL;
 #endif
   old_level = intr_disable ();

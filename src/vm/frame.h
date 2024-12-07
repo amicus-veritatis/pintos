@@ -5,6 +5,7 @@
 #include "threads/palloc.h"
 #include <hash.h>
 #include "lib/kernel/hash.h"
+#include <list.h>
 typedef int fid_t;
 
 enum frame_status

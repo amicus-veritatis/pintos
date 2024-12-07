@@ -30,6 +30,7 @@ static void page_fault (struct intr_frame *);
    signals.  Instead, we'll make them simply kill the user
    process.
 
+          user ? "user" : "kernel");
    Page faults are an exception.  Here they are treated the same
    way as other exceptions, but this will need to change to
    implement virtual memory.
@@ -176,11 +177,12 @@ page_fault (struct intr_frame *f)
     goto KERNEL_GA_KILL;
   }
   struct supp_page_table_entry *s = search_by_addr(t, fault_addr);
+  void *esp = user ? f->esp : t->esp;
   if (s == NULL) {
     if (fault_addr < PHYS_BASE - STACK_LIMIT) {
       goto KERNEL_GA_KILL;
     }
-    if (fault_addr < f->esp - 32) {
+    if (fault_addr < esp - 32) {
       goto KERNEL_GA_KILL;
     }
     grow_stack(t, fault_addr);

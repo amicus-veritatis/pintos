@@ -51,9 +51,6 @@ syscall_handler (struct intr_frame *f)
 	uint32_t* esp = (uint32_t*) f->esp;
 	check_address(esp);
 	int syscall_number = *esp;
-#ifdef VM
-  thread_current()->esp = f->esp;
-#endif
 	switch (syscall_number) {
 		case SYS_HALT:
 			halt();
@@ -177,12 +174,8 @@ static inline void fs_pin(const void *addr, uint32_t size)
       {
         PANIC("?");
       }
+      set_pinned(s->kpage, true);
     }
-
-    struct frame_table_entry *f = search_by_page(s->kpage);
-		if (f != NULL) {
-    	set_pinned(f->kpage, true);
-		}
   }
 }
 
@@ -199,12 +192,7 @@ static inline void fs_unpin(const void *addr, uint32_t size)
     {
 			PANIC("unpin error");
     }
-
-    struct frame_table_entry *f = search_by_page(s->kpage);
-    if (f != NULL)
-    {
-    	set_pinned(f->kpage, false);
-		}
+    set_pinned(s->kpage, false);
   }
 }
 

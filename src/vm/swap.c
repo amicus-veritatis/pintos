@@ -53,32 +53,3 @@ swap_free (size_t idx)
   bitmap_set(swap_bitmap, idx, true);
   lock_release(&swap_lock);
 }
-
-/* 
-void
-swap_in (size_t idx, void * addr)
-{
-  lock_acquire(&swap_lock);
-  for (size_t i=0; i<MAX_BLOCKS; i++) {
-    block_read(block_get_role(BLOCK_SWAP), MAX_BLOCKS * idx + i, BLOCK_SECTOR_SIZE*i + addr);
-  }
-  bitmap_set(swap_bitmap, idx, true);
-  lock_release(&swap_lock);
-}
-
-size_t swap_out (void *addr)
-{
-  lock_acquire(&swap_lock);
-  size_t idx = bitmap_scan(swap_bitmap, 0, 1, 1);
-  if (idx == BITMAP_ERROR) {
-    // Handle the error, possibly by killing the process or freeing up swap space
-    PANIC("Swap space exhausted");
-}
-  for (size_t i = 0; i <MAX_BLOCKS; i++) {
-    block_write(block_get_role(BLOCK_SWAP), idx * MAX_BLOCKS + i, addr + BLOCK_SECTOR_SIZE * i);
-  }
-  bitmap_set(swap_bitmap, idx, false);
-  lock_release(&swap_lock);
-  return idx;
-}
-*/
