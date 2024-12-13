@@ -227,19 +227,6 @@ process_exit (void)
 	   t->parent = NULL;
 	}
    }
-
-#ifdef VM
-  if (cur->file != NULL) {
-    file_allow_write(cur->file);
-    file_close(cur->file);
-  }
-  if (cur->supp_page_table != NULL) {
-    hash_destroy(cur->supp_page_table, supp_destroy);
-    free(cur->supp_page_table);
-    cur->supp_page_table = NULL;
-  }
-#endif
-
   uint32_t *pd;
 
   /* Destroy the current process's page directory and switch back
@@ -258,6 +245,19 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+#ifdef VM
+  if (cur->file != NULL) {
+    file_allow_write(cur->file);
+    file_close(cur->file);
+  }
+  if (cur->supp_page_table != NULL) {
+    hash_destroy(cur->supp_page_table, supp_destroy);
+    free(cur->supp_page_table);
+    cur->supp_page_table = NULL;
+  }
+#endif
+
+
    /* We're done with this process */
    cur->flags |= O_EXITED;
 
@@ -640,11 +640,15 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       s->upage = upage;
       s->kpage = NULL;
       s->flags = 0;
-      s->read_bytes = page_read_bytes;
-      s->zero_bytes = page_zero_bytes;
-      s->file = file; 
-      s->ofs = ofs;
-      s->flags = O_PG_FS;
+      if (page_read_bytes == 0) {
+        s->flags = O_PG_ALL_ZERO; // Mark as zero-initialized
+      } else {
+        s->flags = O_PG_FS;       // Mark as file-backed
+        s->read_bytes = page_read_bytes;
+        s->zero_bytes = page_zero_bytes;
+        s->file = file;
+        s->ofs = ofs;
+      }
       if (writable) {
         s->flags |= O_WRITABLE;
       }
@@ -713,7 +717,7 @@ handle_mm_fault (struct supp_page_table_entry *s)
     return true;
   }
   void *new_page = frame_get_page(PAL_USER, s->upage);
-  ASSERT(new_page != NULL);
+  ASSERT (new_page != NULL);
   switch (flags) {
     case O_PG_ALL_ZERO:
       memset(new_page, 0, PGSIZE);
@@ -722,7 +726,7 @@ handle_mm_fault (struct supp_page_table_entry *s)
     case O_PG_FS:
       file_seek(s->file, s->ofs);
       if (file_read(s->file, new_page, s->read_bytes) != (int) s->read_bytes) {
-        frame_free_page(new_page);
+        frame_free_page(pg_round_down(new_page));
         return false;
       }
       memset(new_page + s->read_bytes, 0, s->zero_bytes);

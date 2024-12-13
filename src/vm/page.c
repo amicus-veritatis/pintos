@@ -8,7 +8,7 @@
 #include "threads/vaddr.h"
 #include "vm/page.h"
 #include "vm/frame.h"
-
+#include "vm/swap.h"
 unsigned
 supp_hash (const struct hash_elem *s_, void *aux UNUSED)
 {
@@ -44,9 +44,6 @@ grow_stack (struct thread *t, void *addr) {
   s->upage = upage;
   s->kpage = NULL;
   s->file = NULL;
-  s->ofs = 0;
-  s->read_bytes = 0;
-  s->zero_bytes = PGSIZE;
   s->flags = O_PG_ALL_ZERO | O_WRITABLE;
 
   hash_insert(t->supp_page_table, &(s->elem));

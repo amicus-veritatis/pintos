@@ -3,6 +3,7 @@
 
 #include "vm/frame.h"
 #include "vm/page.h"
+#include "vm/swap.h"
 #include "threads/thread.h"
 #include "threads/palloc.h"
 #include "threads/malloc.h"
@@ -100,22 +101,23 @@ void evict_cleanup(struct frame_table_entry *, struct supp_page_table_entry *);
 struct frame_table_entry*
 clock_next (void)
 {
-  ASSERT (!list_empty(&frame_list));
-  if (clock == NULL) {
-    clock = list_begin(&frame_list);
-  } else if (clock == list_end(&frame_list)) {
+  if (clock == NULL || list_next(clock) == list_end(&frame_list)) {
     clock = list_begin(&frame_list);
   } else {
     clock = list_next(clock);
   }
-  return list_entry(clock, struct frame_table_entry, list_elem);
+  struct frame_table_entry *ret = list_entry(clock, struct frame_table_entry, list_elem);
+  ASSERT (ret != NULL);
+  return ret;
 }
 
 
 struct frame_table_entry*
 frame_evicted ()
 {
-  for (struct frame_table_entry *f = clock_next();;f = clock_next()) {
+  ASSERT(!list_empty(&frame_list));
+  struct frame_table_entry *f = clock_next();
+  for (;;f=clock_next()) {
     if (f->status == FRAME_PINNED) {
       continue;
     }
@@ -127,6 +129,7 @@ frame_evicted ()
   }
   NOT_REACHED();
 }
+
 /* This function actually allocates frame_table_entry, not page,
  * but because this function intends to replace palloc_get_page,
  * we name this frame_get_page.
@@ -135,6 +138,7 @@ void*
 frame_get_page(enum palloc_flags flags, void *upage)
 {
   lock_acquire(&frame_lock);
+  ASSERT (upage != NULL);
   void *page = palloc_get_page(PAL_USER | flags);
   if (page == NULL) {
     struct frame_table_entry *evicted = frame_evicted();
@@ -149,12 +153,12 @@ frame_get_page(enum palloc_flags flags, void *upage)
     lock_release(&frame_lock);
     return NULL;
   }
-
+  frame->t = thread_current();
   frame->fid = allocate_fid();
   frame->kpage = page;
   frame->upage = upage;
   frame->status = FRAME_USED;
-  frame->t = thread_current();
+  ASSERT(frame->upage == upage);
   hash_insert(&frame_hash_map_by_kpage, &(frame->kpage_elem));
   hash_insert(&frame_hash_map_by_fid, &(frame->fid_elem));
   list_push_back(&frame_list, &(frame->list_elem));
@@ -170,40 +174,20 @@ frame_get_page(enum palloc_flags flags, void *upage)
 void
 evict_cleanup(struct frame_table_entry *evicted, struct supp_page_table_entry *s)
 {
-  s->swap_idx = swap_out(evicted->kpage);
+  ASSERT(evicted->kpage != NULL);
 	if (pagedir_is_dirty(evicted->t->pagedir, evicted->upage)) {
     s->flags |= O_DIRTY;
   };
 
+  pagedir_clear_page(evicted->t->pagedir, evicted->upage);
+  s->swap_idx = swap_out(evicted->kpage);
+  s->flags = (s->flags & ~O_PG_MASK) | O_PG_SWAP;
   s->kpage = NULL;
-  switch (s->flags & O_PG_MASK) {
-    case O_PG_MEM:
-      PANIC("THIS SHOULD NOT HAPPEN");
-      break;
-    case O_PG_ALL_ZERO:
-      if (s->flags & O_DIRTY) {
-        s->swap_idx = swap_out(evicted->kpage);
-        s->flags = (s->flags & ~O_PG_MASK) | O_PG_SWAP;
-      }
-      break;
-    case O_PG_FS:
-      if (s->flags & O_DIRTY) {
-        file_write_at(s->file, s->upage, s->read_bytes, s->ofs);
-      }
-      break;
-    case O_PG_SWAP:
-      break;
-    default:
-      PANIC("????????");
-  }
+  palloc_free_page(evicted->kpage);
   hash_delete(&frame_hash_map_by_kpage, &evicted->kpage_elem);
   hash_delete(&frame_hash_map_by_fid, &evicted->fid_elem);
-  pagedir_clear_page(evicted->t->pagedir, pg_round_down(evicted->upage));
-  if (&(evicted->list_elem) == clock) {
-    clock_next();
-  }
   list_remove(&evicted->list_elem);
-  palloc_free_page(evicted->kpage);
+
   free(evicted);
 }
 /* The name is blatantly untrue.
@@ -221,6 +205,7 @@ frame_free_page(void *page)
   if (frame == NULL) {
     PANIC ("Such page does not exist!");
   }
+  pagedir_clear_page(frame->t->pagedir, frame->upage);
   palloc_free_page(page);
   lock_acquire(&frame_lock);
   hash_delete(&frame_hash_map_by_kpage, &frame->kpage_elem);

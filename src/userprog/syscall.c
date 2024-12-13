@@ -160,22 +160,21 @@ static inline void fs_pin(const void *addr, uint32_t size)
   void *end = addr + size;
   void *upage;
 
-  for (upage = pg_round_down(start); upage < end; upage += PGSIZE)
+  for (upage = start; upage < end; upage += PGSIZE)
   {
     struct supp_page_table_entry *s = search_by_addr(thread_current(), upage);
-    if (s == NULL)
-    {
-			exit(-1);
+    if (s == NULL) {
+      exit(-1);
     }
-
     if (s->kpage == NULL)
     {
       if (!handle_mm_fault(s))
       {
         PANIC("?");
       }
-      set_pinned(s->kpage, true);
     }
+    ASSERT(s->kpage != NULL);
+    set_pinned(s->kpage, true);
   }
 }
 
@@ -185,14 +184,15 @@ static inline void fs_unpin(const void *addr, uint32_t size)
   void *end = addr + size;
   void *upage;
 
-  for (upage = pg_round_down(start); upage < end; upage += PGSIZE)
+  for (upage = start; upage < end; upage += PGSIZE)
   {
     struct supp_page_table_entry *s = search_by_addr(thread_current(), upage);
-    if (s == NULL)
-    {
-			PANIC("unpin error");
+    if (s == NULL) {
+      exit(-1);
     }
-    set_pinned(s->kpage, false);
+    if (s->kpage != NULL) {
+      set_pinned(s->kpage, false);
+    }
   }
 }
 

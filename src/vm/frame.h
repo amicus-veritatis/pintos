@@ -6,6 +6,7 @@
 #include <hash.h>
 #include "lib/kernel/hash.h"
 #include <list.h>
+#include "lib/kernel/list.h"
 typedef int fid_t;
 
 enum frame_status

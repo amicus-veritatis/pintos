@@ -22,26 +22,25 @@ void
 swap_in (size_t idx, void * addr)
 {
   lock_acquire(&swap_lock);
-  uint8_t *buffer = (uint8_t *) addr;
+  ASSERT (idx != -1);
+  struct block *swap_disk = block_get_role(BLOCK_SWAP);
   for (size_t i=0; i<MAX_BLOCKS; i++) {
-    block_read(block_get_role(BLOCK_SWAP), MAX_BLOCKS * idx + i, buffer + BLOCK_SECTOR_SIZE * i);
+    block_read(swap_disk, MAX_BLOCKS * idx + i, addr + BLOCK_SECTOR_SIZE * i);
   }
-  bitmap_set(swap_bitmap, idx, true);
+  bitmap_flip(swap_bitmap, idx);
   lock_release(&swap_lock);
 }
 
 size_t swap_out (void *addr)
 {
   lock_acquire(&swap_lock);
-  size_t idx = bitmap_scan(swap_bitmap, 0, 1, true);
+  size_t idx = bitmap_scan_and_flip(swap_bitmap, 0, 1, true);
   if (idx == BITMAP_ERROR) {
     PANIC("Swap space exhausted");
   }
-  uint8_t *buffer = (uint8_t *) addr;
   for (size_t i = 0; i < MAX_BLOCKS; i++) {
-    block_write(block_get_role(BLOCK_SWAP), idx * MAX_BLOCKS + i, buffer + BLOCK_SECTOR_SIZE * i);
+    block_write(block_get_role(BLOCK_SWAP), idx * MAX_BLOCKS + i, addr + BLOCK_SECTOR_SIZE * i);
   }
-  bitmap_set(swap_bitmap, idx, false);
   lock_release(&swap_lock);
   return idx;
 }
@@ -50,6 +49,6 @@ void
 swap_free (size_t idx)
 {
   lock_acquire(&swap_lock);
-  bitmap_set(swap_bitmap, idx, true);
+  bitmap_flip(swap_bitmap, idx);
   lock_release(&swap_lock);
 }
