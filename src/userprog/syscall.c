@@ -38,104 +38,104 @@ static int max_of_four_int (int a, int b, int c, int d);
 struct lock fs_lock;
 
 void
-syscall_init () 
+syscall_init ()
 {
-	lock_init(&fs_lock);
-	intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+        lock_init(&fs_lock);
+        intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
 /* Do not trust every pointer no matter what */
 static void
-syscall_handler (struct intr_frame *f) 
+syscall_handler (struct intr_frame *f)
 {
-	uint32_t* esp = (uint32_t*) f->esp;
-	check_address(esp);
-	int syscall_number = *esp;
-	switch (syscall_number) {
-		case SYS_HALT:
-			halt();
-			break;
-		case SYS_EXIT:
-			/* Never trust anything */
-			check_address(&esp[1]);
-			exit((int) esp[1]);
-			break;
-		case SYS_EXEC:
-			f->eax = exec((const char *) esp[1]);
-			break;
-		case SYS_WAIT:
-			f->eax = wait((int) esp[1]);	
-			break;
-		case SYS_CREATE:
-			f->eax = create((const char *) esp[1], (unsigned) esp[2]);
-			break;
-		case SYS_REMOVE:
-			f->eax = remove((const char *) esp[1]);
-			break;
-		case SYS_OPEN:
-			f->eax = open((const char *) esp[1]);
-			break;
-		case SYS_FILESIZE:
-			f->eax = filesize((int) esp[1]);
-			break;
-		case SYS_READ:
-			f->eax = read((int) esp[1], (void *) esp[2], (int) esp[3]);
-			break;
-		case SYS_WRITE:
-			f->eax = write((int) esp[1], (const void *) esp[2], (int) esp[3]);
-			break;
-		case SYS_SEEK:
-			seek((int) esp[1], (unsigned) esp[2]);
-			break;
-		case SYS_TELL:
-			f->eax = tell((int) esp[1]);
-			break;
-		case SYS_CLOSE:
-			close((int) esp[1]);
-			break;
-		case SYS_MMAP:
-			printf("MMAP!\n");
-			break;
-		case SYS_MUNMAP:
-			printf("MUNMAP!\n");
-			break;
-		case SYS_CHDIR:
-			printf("CHDIR!\n");
-			break;
-		case SYS_MKDIR:
-			printf("MKDIR!\n");
-			break;
-		case SYS_READDIR:
-			printf("READDIR!\n");
-			break;
-		case SYS_ISDIR:
-			printf("ISDIR!\n");
-			break;
-		case SYS_INUMBER:
-			printf("INUMBER!\n");
-			break;
-		case SYS_FIBONACCI:
-			f->eax = fibonacci((int) esp[1]);
-			break;
-		case SYS_MAX_OF_FOUR:
-			f->eax = max_of_four_int((int) esp[1], (int) esp[2], (int) esp[3], (int) esp[4]);
-			break;
-		default:
-			exit(-1);
-			break;
-	}
-}		
+        uint32_t* esp = (uint32_t*) f->esp;
+        check_address(esp);
+        int syscall_number = *esp;
+        switch (syscall_number) {
+                case SYS_HALT:
+                        halt();
+                        break;
+                case SYS_EXIT:
+                        /* Never trust anything */
+                        check_address(&esp[1]);
+                        exit((int) esp[1]);
+                        break;
+                case SYS_EXEC:
+                        f->eax = exec((const char *) esp[1]);
+                        break;
+                case SYS_WAIT:
+                        f->eax = wait((int) esp[1]);
+                        break;
+                case SYS_CREATE:
+                        f->eax = create((const char *) esp[1], (unsigned) esp[2]);
+                        break;
+                case SYS_REMOVE:
+                        f->eax = remove((const char *) esp[1]);
+                        break;
+                case SYS_OPEN:
+                        f->eax = open((const char *) esp[1]);
+                        break;
+                case SYS_FILESIZE:
+                        f->eax = filesize((int) esp[1]);
+                        break;
+                case SYS_READ:
+                        f->eax = read((int) esp[1], (void *) esp[2], (int) esp[3]);
+                        break;
+                case SYS_WRITE:
+                        f->eax = write((int) esp[1], (const void *) esp[2], (int) esp[3]);
+                        break;
+                case SYS_SEEK:
+                        seek((int) esp[1], (unsigned) esp[2]);
+                        break;
+                case SYS_TELL:
+                        f->eax = tell((int) esp[1]);
+                        break;
+                case SYS_CLOSE:
+                        close((int) esp[1]);
+                        break;
+                case SYS_MMAP:
+                        printf("MMAP!\n");
+                        break;
+                case SYS_MUNMAP:
+                        printf("MUNMAP!\n");
+                        break;
+                case SYS_CHDIR:
+                        printf("CHDIR!\n");
+                        break;
+                case SYS_MKDIR:
+                        printf("MKDIR!\n");
+                        break;
+                case SYS_READDIR:
+                        printf("READDIR!\n");
+                        break;
+                case SYS_ISDIR:
+                        printf("ISDIR!\n");
+                        break;
+                case SYS_INUMBER:
+                        printf("INUMBER!\n");
+                        break;
+                case SYS_FIBONACCI:
+                        f->eax = fibonacci((int) esp[1]);
+                        break;
+                case SYS_MAX_OF_FOUR:
+                        f->eax = max_of_four_int((int) esp[1], (int) esp[2], (int) esp[3], (int) esp[4]);
+                        break;
+                default:
+                        exit(-1);
+                        break;
+        }
+}
 
 
 /* See threads/vaddr.h */
 static bool
 is_valid_user_vaddr (const void* addr){
-	return addr != NULL && is_user_vaddr(addr);
+        return addr != NULL && is_user_vaddr(addr);
 }
 
 static bool
 is_valid_fd_num (const int fd_num) {
-	return fd_num >= MIN_FILENO && fd_num < FD_MAX_SIZE;
+        return fd_num >= MIN_FILENO && fd_num < FD_MAX_SIZE;
 }
 #ifdef VM
 /*
@@ -204,8 +204,8 @@ static inline void fs_unpin(const void *addr, uint32_t size)
 void check_address(const void *addr) {
 #ifndef VM
   if (!is_valid_user_vaddr(addr) || pagedir_get_page (thread_current() -> pagedir,addr) == NULL) {
-		exit(-1);
-	} 
+                exit(-1);
+        }
 #else
   if (!is_valid_user_vaddr(addr)) {
     exit(-1);
@@ -214,15 +214,15 @@ void check_address(const void *addr) {
 }
 
 void check_fd_num (const int fd) {
-	if (!is_valid_fd_num(fd)) {
-		exit(-1);
-	}
-    	struct thread *t = thread_current();
-    	if (t->fd[fd] == NULL) {
-        	exit(-1);
-    	}
+        if (!is_valid_fd_num(fd)) {
+                exit(-1);
+        }
+  struct thread *t = thread_current();
+  if (t->fd[fd] == NULL) {
+    exit(-1);
+  }
 }
-/* 
+/*
  * Get current thread and shut down it.
  * Terminates the current user program,
  * returning status to the kernel.
@@ -233,228 +233,234 @@ void check_fd_num (const int fd) {
 void
 exit (int status)
 {
-	struct thread* cur = thread_current();
-	cur -> exit_status = status;
-	cur -> flags |= O_EXITED;
-	printf("%s: exit(%d)\n", thread_name(), status);
-	thread_exit();
+        struct thread* cur = thread_current();
+        cur -> exit_status = status;
+        cur -> flags |= O_EXITED;
+        printf("%s: exit(%d)\n", thread_name(), status);
+        thread_exit();
 }
 
 int
 wait (pid_t pid)
 {
-	return process_wait(pid);
+        return process_wait(pid);
 }
 
 bool
 create (const char *file_name, unsigned size)
 {
-	// Do not trust anything
-	check_address(file_name);
-	return filesys_create(file_name, size);
+  lock_acquire(&fs_lock);
+        // Do not trust anything
+        check_address(file_name);
+        bool ret = filesys_create(file_name, size);
+  lock_release(&fs_lock);
+  return ret;
 }
 
 bool
 remove (const char *file_name)
 {
-	// Do not trust anything
-	check_address(file_name);
-	return filesys_remove(file_name);
+        // Do not trust anything
+  lock_acquire(&fs_lock);
+        check_address(file_name);
+        bool ret = filesys_remove(file_name);
+  lock_release(&fs_lock);
+  return ret;
 }
 
 int
 open (const char* file_name)
 {
-	// Do not trust anything
-	check_address(file_name);
-	lock_acquire(&fs_lock);
-	struct file *f = filesys_open(file_name);
-	if (f == NULL) {
-		lock_release(&fs_lock);
-		return -1;
-	}
-	int cur_fd = MIN_FILENO;
-	while (cur_fd < FD_MAX_SIZE) {
-		if (thread_current()->fd[cur_fd] == NULL) {
-			break;
-		}
-		cur_fd++;
-	}
-	if (cur_fd >= FD_MAX_SIZE) {
-		lock_release(&fs_lock);
-		return -1;
-	}
-	struct thread *t = thread_current();
-	if (strcmp(t->name, file_name) == 0) {
-		file_deny_write(f);
-	}
-	t->fd[cur_fd] = f;
-	lock_release(&fs_lock);
-	return cur_fd;
+        // Do not trust anything
+        check_address(file_name);
+        lock_acquire(&fs_lock);
+        struct file *f = filesys_open(file_name);
+        if (f == NULL) {
+                lock_release(&fs_lock);
+                return -1;
+        }
+        int cur_fd = MIN_FILENO;
+        while (cur_fd < FD_MAX_SIZE) {
+                if (thread_current()->fd[cur_fd] == NULL) {
+                        break;
+                }
+                cur_fd++;
+        }
+        if (cur_fd >= FD_MAX_SIZE) {
+                lock_release(&fs_lock);
+                return -1;
+        }
+        struct thread *t = thread_current();
+        if (strcmp(t->name, file_name) == 0) {
+                file_deny_write(f);
+        }
+        t->fd[cur_fd] = f;
+        lock_release(&fs_lock);
+        return cur_fd;
 }
 
 int
 filesize (int fd)
 {
-	check_fd_num(fd);
-	lock_acquire(&fs_lock);
-	struct thread *t = thread_current();
-	int ret = file_length(t->fd[fd]);
-	lock_release(&fs_lock);
-	return ret;
+        check_fd_num(fd);
+        lock_acquire(&fs_lock);
+        struct thread *t = thread_current();
+        int ret = file_length(t->fd[fd]);
+        lock_release(&fs_lock);
+        return ret;
 }
 
 void
 seek (int fd, unsigned position)
 {
-	check_fd_num(fd);
-	lock_acquire(&fs_lock);
-	file_seek(thread_current()->fd[fd], position);
-	lock_release(&fs_lock);
+        check_fd_num(fd);
+        lock_acquire(&fs_lock);
+        file_seek(thread_current()->fd[fd], position);
+        lock_release(&fs_lock);
 }
 
 unsigned
 tell (fd)
 {
-	check_fd_num(fd);
-	unsigned status;
-	lock_acquire(&fs_lock);
-	status = file_tell(thread_current()->fd[fd]);
-	lock_release(&fs_lock);
-	return status;
+        check_fd_num(fd);
+        unsigned status;
+        lock_acquire(&fs_lock);
+        status = file_tell(thread_current()->fd[fd]);
+        lock_release(&fs_lock);
+        return status;
 }
 
-/* 
+/*
  * return with 0 if user is either trying to
  * write into stdin or cause out-of-range error
  */
 int
 write (int fd, const void *buffer, unsigned size)
 {
-	check_address(buffer);
-	if (fd == STDIN_FILENO) {
-		return 0;
-	} else if (fd == STDOUT_FILENO) {
-        	putbuf(buffer, size);
-        	return size;
-	}
-	else if (fd >= MIN_FILENO && fd < FD_MAX_SIZE) {
-		/* fprint has not been implemented yet! */
-		lock_acquire(&fs_lock);
+        check_address(buffer);
+        if (fd == STDIN_FILENO) {
+                return 0;
+        } else if (fd == STDOUT_FILENO) {
+                putbuf(buffer, size);
+                return size;
+        }
+        else if (fd >= MIN_FILENO && fd < FD_MAX_SIZE) {
+                /* fprint has not been implemented yet! */
+                lock_acquire(&fs_lock);
 #ifdef VM
     fs_pin(buffer, size);
 #endif
-		struct thread *t = thread_current();
-		int ret = 0;
-		if (t->fd[fd] != NULL) {
-			ret = file_write(t->fd[fd], buffer, size);
-		}
+                struct thread *t = thread_current();
+                int ret = 0;
+                if (t->fd[fd] != NULL) {
+                        ret = file_write(t->fd[fd], buffer, size);
+                }
 #ifdef VM
     fs_unpin(buffer, size);
 #endif
-		lock_release(&fs_lock);
-		return ret;
-	}
-	return 0;
+                lock_release(&fs_lock);
+                return ret;
+        }
+        return 0;
 }
 
-/* 
+/*
  * return with -1 if user is either trying to
  * read stdout  or cause out-of-range error
  * for input_getc(), see src/devices/input.h
  */
 int read(int fd, void *buffer, unsigned size) {
-	check_address(buffer);
-	check_address(buffer+size-1);
-	if (fd == STDOUT_FILENO) {
-		return -1;
-	} else if (fd == STDIN_FILENO) {
-        	/* We do not check \0
-		 * Trust programmers! */
-		lock_acquire(&fs_lock);
+        check_address(buffer);
+        check_address(buffer+size-1);
+        if (fd == STDOUT_FILENO) {
+                return -1;
+        } else if (fd == STDIN_FILENO) {
+                /* We do not check \0
+                 * Trust programmers! */
+                lock_acquire(&fs_lock);
 #ifdef VM
     fs_pin(buffer, size);
 #endif
-		char *buf = buffer;
+                char *buf = buffer;
     *buf = input_getc();
 #ifdef VM
     fs_unpin(buffer, size);
 #endif
-		lock_release(&fs_lock);
-        	return size;	
-	} 
-	else if (fd >= MIN_FILENO && fd < FD_MAX_SIZE) {
-		lock_acquire(&fs_lock);
+                lock_release(&fs_lock);
+                return size;
+        }
+        else if (fd >= MIN_FILENO && fd < FD_MAX_SIZE) {
+                lock_acquire(&fs_lock);
 #ifdef VM
     fs_pin(buffer, size);
 #endif
-		struct thread *t = thread_current();
-		if (t->fd[fd] == NULL) {
-			lock_release(&fs_lock);
-			return -1;
-		}
-		int f = file_read(t->fd[fd], buffer, size);
+                struct thread *t = thread_current();
+                if (t->fd[fd] == NULL) {
+                        lock_release(&fs_lock);
+                        return -1;
+                }
+                int f = file_read(t->fd[fd], buffer, size);
 #ifdef VM
     fs_unpin(buffer, size);
 #endif
-		lock_release(&fs_lock);
-		return f;
-	}
-	return -1;
+                lock_release(&fs_lock);
+                return f;
+        }
+        return -1;
 }
 
 /* See src/devicees/shutdown.c */
 void
 halt ()
 {
-	shutdown_power_off ();
+        shutdown_power_off ();
 }
 
 /* exit the process if pointer points to invalid address
  * do not trust pointer
- * Also acquire and release fs_lock because 
+ * Also acquire and release fs_lock because
  * process_execute() calls load() and load() uses file system.
  */
 pid_t
 exec (const char *cmd_line)
 {
-	check_address(cmd_line);
-	/* Avoid race condition. */
-	char *cmd_line_copy = palloc_get_page(0);
-	if (cmd_line_copy == NULL) { 
-		return -1;
-	}
-	strlcpy(cmd_line_copy, cmd_line, PGSIZE);
+        check_address(cmd_line);
+        lock_acquire(&fs_lock);
+        /* Avoid race condition. */
+        char *cmd_line_copy = palloc_get_page(0);
+        if (cmd_line_copy == NULL) {
+                return -1;
+        }
+        strlcpy(cmd_line_copy, cmd_line, PGSIZE);
 
-	lock_acquire(&fs_lock);
-	tid_t ret = process_execute(cmd_line_copy);
-	lock_release(&fs_lock);
+        tid_t ret = process_execute(cmd_line_copy);
 
-	palloc_free_page(cmd_line_copy);
+        palloc_free_page(cmd_line_copy);
 
-	if (ret == TID_ERROR) {
-		return -1;
-	}
+        lock_release(&fs_lock);
+        if (ret == TID_ERROR) {
+                return -1;
+        }
 
-	return ret;
+        return ret;
 }
 
 void
 close (int fd)
 {
-	lock_acquire(&fs_lock);
-	struct thread *t = thread_current();
-	if (t->fd[fd] == NULL) {
-		lock_release(&fs_lock);
-		return;
-	}
-	file_close(t->fd[fd]);
-	t->fd[fd] = NULL;
-	lock_release(&fs_lock);
-	return;
+        lock_acquire(&fs_lock);
+        struct thread *t = thread_current();
+        if (t->fd[fd] == NULL) {
+                lock_release(&fs_lock);
+                return;
+        }
+        file_close(t->fd[fd]);
+        t->fd[fd] = NULL;
+        lock_release(&fs_lock);
+        return;
 }
 
-/* Simple iterative implementation */	
+/* Simple iterative implementation */
 int
 fibonacci (int n)
 {
@@ -482,5 +488,3 @@ max_of_four_int (int a, int b, int c, int d) {
         cd = c > d ? c : d;
         return ab > cd ? ab : cd;
 }
-
-

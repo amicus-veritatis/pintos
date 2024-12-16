@@ -30,6 +30,7 @@ struct frame_table_entry
 
 void frame_init (void);
 void *frame_get_page (enum palloc_flags, void *);
+void frame_free_page_with_lock (void *);
 void frame_free_page (void *);
 static fid_t allocate_fid(void);
 struct frame_table_entry* search_by_fid(fid_t);

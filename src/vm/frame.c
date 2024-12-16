@@ -1,6 +1,6 @@
 #include <hash.h>
 #include <list.h>
-
+#include <string.h>
 #include "vm/frame.h"
 #include "vm/page.h"
 #include "vm/swap.h"
@@ -10,7 +10,8 @@
 #include "threads/vaddr.h"
 #include "userprog/pagedir.h"
 #include <lib/debug.h>
-#define JUNK (0xCCCCCCCC)
+#define JUNK (0xcccccccc)
+#define THREAD_MAGIC 0xcd6abf4b
 struct lock frame_lock;
 struct hash frame_hash_map_by_kpage;
 struct hash frame_hash_map_by_fid;
@@ -64,24 +65,28 @@ allocate_fid()
 {
   static fid_t next_fid = 1;
   fid_t fid;
-  
+
   lock_acquire(&fid_lock);
   fid = next_fid++;
   lock_release(&fid_lock);
-  
+
   return fid;
 }
 
 struct frame_table_entry*
 search_by_page(void *page)
 {
+  lock_acquire(&frame_lock);
   struct frame_table_entry tmp;
+  memset(&tmp, 0, sizeof(tmp));
   tmp.kpage = page;
   struct hash_elem *tmp_elem = hash_find(&frame_hash_map_by_kpage, &(tmp.kpage_elem));
   if (tmp_elem == NULL) {
     return NULL;
   }
-  return hash_entry(tmp_elem, struct frame_table_entry, kpage_elem);
+  struct frame_table_entry *f = hash_entry(tmp_elem, struct frame_table_entry, kpage_elem);
+  lock_release(&frame_lock);
+  return f;
 }
 
 struct frame_table_entry*
@@ -113,6 +118,15 @@ clock_next (void)
   return ret;
 }
 
+static inline bool is_valid_pagedir (void * pd)
+{
+  return pd <= JUNK && pd != NULL;
+}
+
+static inline bool is_valid_thread (void * t)
+{
+  return t <= JUNK && t != NULL;
+}
 
 static inline struct frame_table_entry*
 frame_evicted ()
@@ -127,9 +141,7 @@ frame_evicted ()
     pd = f->t->pagedir;
     upage = f->upage;
     ASSERT(f->t != NULL);
-    // printf("current frame: %p, ", f);
-    // printf("pagedir_is_accessed(%p, %p) ", pd, upage);
-    if (pd == JUNK || pd == NULL || pd > PHYS_BASE) {
+    if (!is_valid_pagedir(pd)) {
       return f;
     }
     if (pagedir_is_accessed(pd, upage) == true) {
@@ -186,10 +198,9 @@ void
 evict_cleanup(struct frame_table_entry *evicted, struct supp_page_table_entry *s)
 {
   ASSERT(evicted->kpage != NULL);
-	if (pagedir_is_dirty(evicted->t->pagedir, evicted->upage)) {
+  if (pagedir_is_dirty(evicted->t->pagedir, evicted->upage)) {
     s->flags |= O_DIRTY;
   };
-
   pagedir_clear_page(evicted->t->pagedir, evicted->upage);
   s->swap_idx = swap_out(evicted->kpage);
   s->flags = (s->flags & ~O_PG_MASK) | O_PG_SWAP;
@@ -198,13 +209,21 @@ evict_cleanup(struct frame_table_entry *evicted, struct supp_page_table_entry *s
   hash_delete(&frame_hash_map_by_kpage, &evicted->kpage_elem);
   hash_delete(&frame_hash_map_by_fid, &evicted->fid_elem);
   list_remove(&evicted->list_elem);
-
   free(evicted);
 }
 /* The name is blatantly untrue.
  * but it would be nice if it uses same name,
  * and nobody except me will manage this code anyway.
  */
+
+void
+frame_free_page_with_lock(void *page)
+{
+  lock_acquire(&frame_lock);
+  frame_free_page(page);
+  lock_release(&frame_lock);
+}
+
 void
 frame_free_page(void *page)
 {
@@ -218,24 +237,20 @@ frame_free_page(void *page)
   }
   pagedir_clear_page(frame->t->pagedir, frame->upage);
   palloc_free_page(page);
-  lock_acquire(&frame_lock);
   hash_delete(&frame_hash_map_by_kpage, &frame->kpage_elem);
   hash_delete(&frame_hash_map_by_fid, &frame->fid_elem);
   list_remove(&frame->list_elem);
 
   free(frame);
-  lock_release(&frame_lock);
 }
 
 void
 set_pinned (void *kpage, bool pinned)
 {
-  lock_acquire(&frame_lock);
   struct frame_table_entry *f = search_by_page(kpage);
   if (pinned) {
     f->status = FRAME_PINNED;
   } else {
     f->status = FRAME_USED;
   }
-  lock_release(&frame_lock);
 }
