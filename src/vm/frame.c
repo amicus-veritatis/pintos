@@ -10,6 +10,7 @@
 #include "threads/vaddr.h"
 #include "userprog/pagedir.h"
 #include <lib/debug.h>
+#define JUNK (0xCCCCCCCC)
 struct lock frame_lock;
 struct hash frame_hash_map_by_kpage;
 struct hash frame_hash_map_by_fid;
@@ -128,12 +129,11 @@ frame_evicted ()
     ASSERT(f->t != NULL);
     // printf("current frame: %p, ", f);
     // printf("pagedir_is_accessed(%p, %p) ", pd, upage);
-    if (pd > PHYS_BASE) {
+    if (pd == JUNK || pd == NULL || pd > PHYS_BASE) {
       return f;
     }
     if (pagedir_is_accessed(pd, upage) == true) {
       pagedir_set_accessed(pd, upage, false);
-      printf(": success\n");
       continue;
     }
     return f;
