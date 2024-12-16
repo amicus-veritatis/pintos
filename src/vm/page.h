@@ -20,13 +20,13 @@
 #define O_PG_ALL_ZERO 0x02
 #define O_PG_FS 0x01
 */
-#define O_PG_ALL_ZERO 0x01
-#define O_PG_FS       0x02
-#define O_PG_SWAP     0x04
-#define O_PG_MEM      0x08
-#define O_WRITABLE    0x10
-#define O_PG_MASK     0x0F
-#define O_DIRTY       0x20
+#define O_PG_ALL_ZERO (0x01)
+#define O_PG_FS       (0x02)
+#define O_PG_SWAP     (0x04)
+#define O_PG_MEM      (0x08)
+#define O_WRITABLE    (0x10)
+#define O_PG_MASK     (0x0F)
+#define O_DIRTY       (0x20)
 #define O_NON_PG_MASK (~O_PG_MASK)
 
 struct supp_page_table_entry {

@@ -34,9 +34,25 @@ search_by_addr (struct thread *t, void * addr)
   if (tmp_elem == NULL) {
     return NULL;
   }
+  struct supp_page_table_entry *s = hash_entry(tmp_elem, struct supp_page_table_entry, elem);
   return hash_entry(tmp_elem, struct supp_page_table_entry, elem);
 }
 
+inline void
+print_spte_entry (struct supp_page_table_entry *s)
+{
+  printf("supp_page_table_entry s:\n");
+  printf("\tupage:\t%p\n", s->upage);
+  printf("\tkpage:\t%p\n", s->kpage);
+  printf("\tflags: %d\n", s->flags);
+  printf("\t\tO_DIRTY: %d, %d\n", O_DIRTY, s->flags & O_DIRTY);
+  printf("\t\tO_WRITABLE: %d, %d\n", O_WRITABLE, s->flags & O_WRITABLE);
+  printf("\t\tO_PG_ALL_ZERO: %d, %d\n", O_PG_ALL_ZERO, s->flags & O_PG_ALL_ZERO);
+  printf("\t\tO_PG_FS: %d, %d\n", O_PG_FS, s->flags & O_PG_FS);
+  printf("\t\tO_PG_SWAP: %d, %d\n", O_PG_SWAP, s->flags & O_PG_SWAP);
+  printf("\t\tO_PG_MEM: %d, %d\n", O_PG_MEM, s->flags & O_PG_MEM);
+  printf("\tswap_idx:\t%d\n", s->swap_idx);
+}
 void
 grow_stack (struct thread *t, void *addr) {
   struct supp_page_table_entry *s = malloc(sizeof(struct supp_page_table_entry));
@@ -45,7 +61,7 @@ grow_stack (struct thread *t, void *addr) {
   s->kpage = NULL;
   s->file = NULL;
   s->flags = O_PG_ALL_ZERO | O_WRITABLE;
-
+  s->swap_idx = -1;
   hash_insert(t->supp_page_table, &(s->elem));
 }
 

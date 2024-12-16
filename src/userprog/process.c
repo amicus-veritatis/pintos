@@ -640,6 +640,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       s->upage = upage;
       s->kpage = NULL;
       s->flags = 0;
+      s->swap_idx = -1;
       if (page_read_bytes == 0) {
         s->flags = O_PG_ALL_ZERO; // Mark as zero-initialized
       } else {
@@ -694,6 +695,7 @@ setup_stack (void **esp)
   if (s == NULL) {
     return success;
   }
+  s->swap_idx = -1;
   s->upage = upage;
   s->flags = 0;
   s->kpage = NULL;
@@ -726,7 +728,7 @@ handle_mm_fault (struct supp_page_table_entry *s)
     case O_PG_FS:
       file_seek(s->file, s->ofs);
       if (file_read(s->file, new_page, s->read_bytes) != (int) s->read_bytes) {
-        frame_free_page(pg_round_down(new_page));
+        frame_free_page(new_page);
         return false;
       }
       memset(new_page + s->read_bytes, 0, s->zero_bytes);

@@ -25,6 +25,7 @@ struct frame_table_entry
     struct hash_elem fid_elem;
     struct list_elem list_elem;
     struct thread *t;
+    uint32_t *pd;
   };
 
 void frame_init (void);

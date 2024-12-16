@@ -95,13 +95,14 @@ search_by_fid(fid_t fid)
   return hash_entry(tmp_elem, struct frame_table_entry, fid_elem);
 }
 struct frame_table_entry* clock_next (void);
-struct frame_table_entry* frame_evicted (void);
+static inline struct frame_table_entry* frame_evicted (void);
 void evict_cleanup(struct frame_table_entry *, struct supp_page_table_entry *);
 
 struct frame_table_entry*
 clock_next (void)
 {
-  if (clock == NULL || list_next(clock) == list_end(&frame_list)) {
+  ASSERT(!list_empty(&frame_list));
+  if (clock == NULL || list_next(clock) == list_end(&frame_list) || clock == list_end(&frame_list)) {
     clock = list_begin(&frame_list);
   } else {
     clock = list_next(clock);
@@ -112,17 +113,27 @@ clock_next (void)
 }
 
 
-struct frame_table_entry*
+static inline struct frame_table_entry*
 frame_evicted ()
 {
-  ASSERT(!list_empty(&frame_list));
   struct frame_table_entry *f = clock_next();
+  uint32_t *pd = NULL;
+  void *upage = NULL;
   for (;;f=clock_next()) {
     if (f->status == FRAME_PINNED) {
       continue;
     }
-    if (pagedir_is_accessed(f->t->pagedir, f->upage)) {
-      pagedir_set_accessed(f->t->pagedir, f->upage, false);
+    pd = f->t->pagedir;
+    upage = f->upage;
+    ASSERT(f->t != NULL);
+    // printf("current frame: %p, ", f);
+    // printf("pagedir_is_accessed(%p, %p) ", pd, upage);
+    if (pd > PHYS_BASE) {
+      return f;
+    }
+    if (pagedir_is_accessed(pd, upage) == true) {
+      pagedir_set_accessed(pd, upage, false);
+      printf(": success\n");
       continue;
     }
     return f;
@@ -141,6 +152,7 @@ frame_get_page(enum palloc_flags flags, void *upage)
   ASSERT (upage != NULL);
   void *page = palloc_get_page(PAL_USER | flags);
   if (page == NULL) {
+    // printf("eviction 시작!\n");
     struct frame_table_entry *evicted = frame_evicted();
     struct supp_page_table_entry *s = search_by_addr(evicted->t, evicted->upage);
     evict_cleanup(evicted, s);
@@ -149,11 +161,10 @@ frame_get_page(enum palloc_flags flags, void *upage)
   }
 
   struct frame_table_entry *frame = malloc(sizeof(struct frame_table_entry));
-  if (frame == NULL) {
-    lock_release(&frame_lock);
-    return NULL;
-  }
-  frame->t = thread_current();
+  ASSERT (frame != NULL);
+  struct thread *t = thread_current();
+  frame->t = t;
+  frame->pd = t->pagedir;
   frame->fid = allocate_fid();
   frame->kpage = page;
   frame->upage = upage;

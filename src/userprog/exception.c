@@ -173,10 +173,10 @@ page_fault (struct intr_frame *f)
 #endif
 #ifdef VM
   struct thread *t = thread_current();
-  struct supp_page_table_entry *s = search_by_addr(t, fault_addr);
   if (!is_user_vaddr(fault_addr)) {
-    goto KERNEL_GA_KILL;
-  }
+      goto KERNEL_GA_KILL;
+    }
+  struct supp_page_table_entry *s = search_by_addr(t, fault_addr);
   void *esp = f->esp;
   if (s == NULL) {
     void *max_addr = esp - 32 > PHYS_BASE - STACK_LIMIT ? esp - 32 : PHYS_BASE - STACK_LIMIT;
