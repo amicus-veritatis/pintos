@@ -4,4 +4,8 @@
 #define SENTINEL 1
 typedef int pid_t; 
 void syscall_init (void);
+#ifdef VM
+#include "threads/synch.h" 
+extern struct lock fs_lock;
+#endif
 #endif /* userprog/syscall.h */

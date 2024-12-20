@@ -36,7 +36,6 @@ static int fibonacci (int n);
 static int max_of_four_int (int a, int b, int c, int d);
 /* End of system call functions */
 struct lock fs_lock;
-
 void
 syscall_init ()
 {
@@ -44,6 +43,18 @@ syscall_init ()
         intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
+static inline void
+syscall_lock_acquire (const char *s) {
+  printf("[%s] Thread %s acquiring fs_lock (at %p)\n", s, thread_current()->name, &fs_lock);
+  lock_acquire(&fs_lock);
+  printf("[%s] Thread %s acquired fs_lock (at %p)\n", s, thread_current()->name, &fs_lock);
+}
+
+static inline void
+syscall_lock_release (const char *s) {
+  printf("[%s] Thread %s releasing fs_lock (at %p)\n", s, thread_current()->name, &fs_lock);
+  lock_release(&fs_lock);
+}
 /* Do not trust every pointer no matter what */
 static void
 syscall_handler (struct intr_frame *f)
@@ -249,10 +260,11 @@ wait (pid_t pid)
 bool
 create (const char *file_name, unsigned size)
 {
+  // syscall_lock_acquire("create");
   lock_acquire(&fs_lock);
-        // Do not trust anything
-        check_address(file_name);
-        bool ret = filesys_create(file_name, size);
+  // Do not trust anything
+  check_address(file_name);
+  bool ret = filesys_create(file_name, size);
   lock_release(&fs_lock);
   return ret;
 }
@@ -262,9 +274,11 @@ remove (const char *file_name)
 {
         // Do not trust anything
   lock_acquire(&fs_lock);
-        check_address(file_name);
+  // syscall_lock_acquire("remove");
+  check_address(file_name);
         bool ret = filesys_remove(file_name);
   lock_release(&fs_lock);
+  // syscall_lock_release("remove");
   return ret;
 }
 
@@ -273,10 +287,10 @@ open (const char* file_name)
 {
         // Do not trust anything
         check_address(file_name);
+        // syscall_lock_acquire("open");
         lock_acquire(&fs_lock);
         struct file *f = filesys_open(file_name);
         if (f == NULL) {
-                lock_release(&fs_lock);
                 return -1;
         }
         int cur_fd = MIN_FILENO;
@@ -287,15 +301,15 @@ open (const char* file_name)
                 cur_fd++;
         }
         if (cur_fd >= FD_MAX_SIZE) {
-                lock_release(&fs_lock);
                 return -1;
         }
         struct thread *t = thread_current();
         if (strcmp(t->name, file_name) == 0) {
                 file_deny_write(f);
         }
-        t->fd[cur_fd] = f;
+        // syscall_lock_release("open");
         lock_release(&fs_lock);
+        t->fd[cur_fd] = f;
         return cur_fd;
 }
 
@@ -314,9 +328,11 @@ void
 seek (int fd, unsigned position)
 {
         check_fd_num(fd);
+        // syscall_lock_acquire("seek");
         lock_acquire(&fs_lock);
         file_seek(thread_current()->fd[fd], position);
         lock_release(&fs_lock);
+        // syscall_lock_release("seek");
 }
 
 unsigned
@@ -346,19 +362,19 @@ write (int fd, const void *buffer, unsigned size)
         }
         else if (fd >= MIN_FILENO && fd < FD_MAX_SIZE) {
                 /* fprint has not been implemented yet! */
-                lock_acquire(&fs_lock);
 #ifdef VM
     fs_pin(buffer, size);
 #endif
                 struct thread *t = thread_current();
                 int ret = 0;
                 if (t->fd[fd] != NULL) {
+                        lock_acquire(&fs_lock);
                         ret = file_write(t->fd[fd], buffer, size);
+                        lock_release(&fs_lock);
                 }
 #ifdef VM
     fs_unpin(buffer, size);
 #endif
-                lock_release(&fs_lock);
                 return ret;
         }
         return 0;
@@ -377,7 +393,6 @@ int read(int fd, void *buffer, unsigned size) {
         } else if (fd == STDIN_FILENO) {
                 /* We do not check \0
                  * Trust programmers! */
-                lock_acquire(&fs_lock);
 #ifdef VM
     fs_pin(buffer, size);
 #endif
@@ -386,24 +401,22 @@ int read(int fd, void *buffer, unsigned size) {
 #ifdef VM
     fs_unpin(buffer, size);
 #endif
-                lock_release(&fs_lock);
                 return size;
         }
         else if (fd >= MIN_FILENO && fd < FD_MAX_SIZE) {
-                lock_acquire(&fs_lock);
 #ifdef VM
     fs_pin(buffer, size);
 #endif
                 struct thread *t = thread_current();
                 if (t->fd[fd] == NULL) {
-                        lock_release(&fs_lock);
                         return -1;
                 }
+                lock_acquire(&fs_lock);
                 int f = file_read(t->fd[fd], buffer, size);
+                lock_release(&fs_lock);
 #ifdef VM
     fs_unpin(buffer, size);
 #endif
-                lock_release(&fs_lock);
                 return f;
         }
         return -1;
@@ -425,7 +438,6 @@ pid_t
 exec (const char *cmd_line)
 {
         check_address(cmd_line);
-        lock_acquire(&fs_lock);
         /* Avoid race condition. */
         char *cmd_line_copy = palloc_get_page(0);
         if (cmd_line_copy == NULL) {
@@ -437,7 +449,6 @@ exec (const char *cmd_line)
 
         palloc_free_page(cmd_line_copy);
 
-        lock_release(&fs_lock);
         if (ret == TID_ERROR) {
                 return -1;
         }
@@ -448,6 +459,7 @@ exec (const char *cmd_line)
 void
 close (int fd)
 {
+        // syscall_lock_acquire("close");
         lock_acquire(&fs_lock);
         struct thread *t = thread_current();
         if (t->fd[fd] == NULL) {
@@ -457,6 +469,7 @@ close (int fd)
         file_close(t->fd[fd]);
         t->fd[fd] = NULL;
         lock_release(&fs_lock);
+        // syscall_lock_release("close");
         return;
 }
 

@@ -123,8 +123,16 @@ start_process (void *pinfo_)
   if_.eflags = FLAG_IF | FLAG_MBS;
 
   /* load the binary. */
+#ifdef VM
+  // printf("[exec] Thread %s acquiring fs_lock (at %p)\n", thread_current()->name, &fs_lock);
+  lock_acquire(&fs_lock);
+  // printf("[exec] Thread %s acquired fs_lock (at %p)\n", thread_current()->name, &fs_lock);
+#endif
   success = load (file_name, &if_.eip, &if_.esp);
-
+#ifdef VM
+  // printf("[exec] Thread %s released fs_lock (at %p)\n", thread_current()->name, &fs_lock);
+  lock_release(&fs_lock);
+#endif
   struct thread* parent = pinfo->parent;
   if (success) {
     cur->tid = (pid_t)(cur->tid);
