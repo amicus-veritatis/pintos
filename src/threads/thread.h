@@ -13,6 +13,7 @@ extern bool thread_prior_aging;
 
 #ifdef VM
 #include "vm/page.h"
+typedef int mapid_t;
 #endif
 
 /* States in a thread's life cycle. */
@@ -149,6 +150,8 @@ struct thread
     struct hash *supp_page_table;
     void *esp;
     struct file* file;
+    struct list mmap;
+    mapid_t mapid;
 #endif
     struct file *fd[FD_MAX_SIZE]; /* file descriptor table. */
     /* Owned by thread.c. */

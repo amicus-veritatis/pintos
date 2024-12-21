@@ -28,6 +28,7 @@
 #define O_PG_MASK     (0x0F)
 #define O_DIRTY       (0x20)
 #define O_NON_PG_MASK (~O_PG_MASK)
+typedef int mapid_t;
 
 struct supp_page_table_entry {
   void *upage;
@@ -41,9 +42,18 @@ struct supp_page_table_entry {
   struct hash_elem elem;
 };
 
+struct mmap_entry {
+  mapid_t mapid;
+  struct file *file;
+  void *upage;
+  size_t file_size;
+  struct list_elem elem;
+};
+
 unsigned supp_hash (const struct hash_elem *, void * UNUSED);
 bool supp_less (const struct hash_elem *, const struct hash_elem *, void * UNUSED);
 struct supp_page_table_entry* search_by_addr(struct thread *, void *);
+struct supp_page_table_entry* search_by_addr_without_pg_round_down(struct thread *, void *);
 void grow_stack (struct thread *, void *);
 void supp_destroy (struct hash_elem *, void * UNUSED);
 #endif

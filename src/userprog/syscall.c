@@ -15,7 +15,11 @@
 #ifdef VM
 #include "vm/page.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
+#define MAX(a,b) (a > b ? a : b)
+#define MIN(a,b) (a > b ? b : a)
 #endif
+
 static void syscall_handler (struct intr_frame *);
 
 /* System call functions */
@@ -34,8 +38,13 @@ static void close (int);
 static pid_t exec(const char* cmd_line);
 static int fibonacci (int n);
 static int max_of_four_int (int a, int b, int c, int d);
+#ifdef VM
+static mapid_t mmap (int, void *);
+void munmap (mapid_t);
+#endif
 /* End of system call functions */
 struct lock fs_lock;
+
 void
 syscall_init ()
 {
@@ -105,10 +114,18 @@ syscall_handler (struct intr_frame *f)
                         close((int) esp[1]);
                         break;
                 case SYS_MMAP:
-                        printf("MMAP!\n");
+#ifdef VM
+                        f->eax = mmap((int) esp[1], (void *) esp[2]);
+#else
+                        printf("MMAP!");
+#endif
                         break;
                 case SYS_MUNMAP:
-                        printf("MUNMAP!\n");
+#ifdef VM
+                        munmap((mapid_t) esp[1]);
+#else
+                        printf("MUNMAP!");
+#endif
                         break;
                 case SYS_CHDIR:
                         printf("CHDIR!\n");
@@ -148,23 +165,8 @@ static bool
 is_valid_fd_num (const int fd_num) {
         return fd_num >= MIN_FILENO && fd_num < FD_MAX_SIZE;
 }
+
 #ifdef VM
-/*
-static inline fs_pin (void *addr, uint32_t size)
-{
-  for (void *p = addr; p < addr + size; p += PGSIZE) {
-    struct frame_table_entry *f = search_by_page(pg_round_down(p));
-    f->status = FRAME_PINNED;
-    handle_mm_fault(search_by_page(pg_round_down(p)));
-  }
-}
-static inline fs_unpin (void *addr, uint32_t size)
-{
-  for (void *p = addr; p < addr + size; p += PGSIZE) {
-    struct frame_table_entry *f = search_by_page(pg_round_down(p));
-    f->status = FRAME_USED;
-  }
-} */
 static inline void fs_pin(const void *addr, uint32_t size)
 {
   void *start = addr;
@@ -205,6 +207,17 @@ static inline void fs_unpin(const void *addr, uint32_t size)
       set_pinned(s->kpage, false);
     }
   }
+}
+
+static inline bool
+is_consecutive_address (struct thread *t, size_t file_size, void * addr)
+{
+  for (size_t ofs = 0; ofs < file_size; ofs += PGSIZE) {
+    if (search_by_addr(t, addr + ofs)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 #endif
@@ -260,12 +273,13 @@ wait (pid_t pid)
 bool
 create (const char *file_name, unsigned size)
 {
-  // syscall_lock_acquire("create");
+  //syscall_lock_acquire("create");
   lock_acquire(&fs_lock);
   // Do not trust anything
   check_address(file_name);
   bool ret = filesys_create(file_name, size);
   lock_release(&fs_lock);
+  //syscall_lock_release("create");
   return ret;
 }
 
@@ -274,11 +288,11 @@ remove (const char *file_name)
 {
         // Do not trust anything
   lock_acquire(&fs_lock);
-  // syscall_lock_acquire("remove");
+  //syscall_lock_acquire("remove");
   check_address(file_name);
         bool ret = filesys_remove(file_name);
   lock_release(&fs_lock);
-  // syscall_lock_release("remove");
+  //syscall_lock_release("remove");
   return ret;
 }
 
@@ -287,10 +301,12 @@ open (const char* file_name)
 {
         // Do not trust anything
         check_address(file_name);
-        // syscall_lock_acquire("open");
+        //syscall_lock_acquire("open");
         lock_acquire(&fs_lock);
         struct file *f = filesys_open(file_name);
         if (f == NULL) {
+                //syscall_lock_release("open");
+                lock_release(&fs_lock);
                 return -1;
         }
         int cur_fd = MIN_FILENO;
@@ -301,13 +317,15 @@ open (const char* file_name)
                 cur_fd++;
         }
         if (cur_fd >= FD_MAX_SIZE) {
+                //syscall_lock_release("open");
+                lock_release(&fs_lock);
                 return -1;
         }
         struct thread *t = thread_current();
         if (strcmp(t->name, file_name) == 0) {
                 file_deny_write(f);
         }
-        // syscall_lock_release("open");
+        //syscall_lock_release("open");
         lock_release(&fs_lock);
         t->fd[cur_fd] = f;
         return cur_fd;
@@ -328,11 +346,11 @@ void
 seek (int fd, unsigned position)
 {
         check_fd_num(fd);
-        // syscall_lock_acquire("seek");
+        //syscall_lock_acquire("seek");
         lock_acquire(&fs_lock);
         file_seek(thread_current()->fd[fd], position);
         lock_release(&fs_lock);
-        // syscall_lock_release("seek");
+        //syscall_lock_release("seek");
 }
 
 unsigned
@@ -459,7 +477,7 @@ exec (const char *cmd_line)
 void
 close (int fd)
 {
-        // syscall_lock_acquire("close");
+        //syscall_lock_acquire("close");
         lock_acquire(&fs_lock);
         struct thread *t = thread_current();
         if (t->fd[fd] == NULL) {
@@ -469,10 +487,158 @@ close (int fd)
         file_close(t->fd[fd]);
         t->fd[fd] = NULL;
         lock_release(&fs_lock);
-        // syscall_lock_release("close");
+        //syscall_lock_release("close");
         return;
 }
 
+#ifdef VM
+mapid_t
+mmap (int fd, void *addr)
+{
+  // printf("[DEBUG] fd=%d, addr=%p\n", fd, addr);
+  if (pg_ofs(addr) || !is_valid_user_vaddr(addr)) {
+    // printf("[DEBUG] fail: address not page aligned or invalid %p\n", addr);
+    return -1;
+  }
+  if (!is_valid_fd_num(fd)) {
+    // printf("[DEBUG] fail: invalid fd\n");
+    return -1;
+  }
+  struct thread *t = thread_current();
+  struct file *f = NULL;
+  if (t->fd[fd] == NULL) {
+    return -1;
+  }
+  if (search_by_addr(t, addr)) {
+    // printf("[DEBUG] fail: address already mapped: %d, %p\n", t->tid, addr);
+    return -1;
+  }
+  //syscall_lock_acquire("mmap");
+  lock_acquire(&fs_lock);
+  size_t file_size = file_length(t->fd[fd]);
+  if (file_size == 0) {  
+    lock_release(&fs_lock);
+    //syscall_lock_release("mmap"); 
+    return -1;
+  }
+  f = file_reopen(t->fd[fd]);
+  if (f == NULL) {
+    lock_release(&fs_lock);
+    //syscall_lock_release("mmap"); 
+    return -1;
+  }
+  if (!is_consecutive_address(t, file_size, addr)) {
+    // printf("[DEBUG] fail: not consecutive: %d, %d, %p\n", t->tid, file_size, addr);
+    //syscall_lock_release("mmap"); 
+    lock_release(&fs_lock);
+    return -1;
+  }
+  lock_release(&fs_lock);
+  //syscall_lock_release("mmap"); 
+  for (size_t ofs = 0; ofs < file_size; ofs += PGSIZE) {
+    size_t read_bytes = MIN(file_size - ofs, PGSIZE);
+    size_t zero_bytes = PGSIZE - read_bytes;
+    struct supp_page_table_entry *s = malloc(sizeof(struct supp_page_table_entry));
+    // kernel pool is full, nothing to do 
+    if (s == NULL) {
+      continue;
+    }
+    s->upage = addr + ofs;
+    s->kpage = NULL;
+    s->flags = 0;
+    s->flags |= O_PG_FS | O_WRITABLE;
+    s->file = f;
+    s->ofs = ofs;
+    s->read_bytes = MIN(file_size - ofs, PGSIZE);
+    s->zero_bytes = PGSIZE - s->read_bytes;
+    s->swap_idx = -1;
+    hash_insert(t->supp_page_table, &(s->elem));
+  }
+
+  struct mmap_entry *m = malloc(sizeof(struct mmap_entry));
+  memset(m, 0, sizeof(struct mmap_entry));
+  m->mapid = t->mapid++;
+  m->file = f;
+  m->upage = addr;
+  m->file_size = file_size;
+  mapid_t mapid = m->mapid;
+  list_push_back(&(t->mmap), &(m->elem));
+  // printf("[DEBUG] success: mapid=%d\n", mapid);
+  return mapid;
+}
+
+static inline struct mmap_entry*
+search_by_mapid(struct thread *t, mapid_t mapid)
+{
+  if (list_empty(&(t->mmap))) {
+    return NULL;
+  }
+  for (struct list_elem *it = list_begin(&(t->mmap)); it != list_end((&t->mmap)); it = list_next(it)) {
+    struct mmap_entry *m = list_entry(it, struct mmap_entry, elem);
+    if (m->mapid == mapid) {
+      return m;
+    }
+  }
+  return NULL;
+}
+
+void
+munmap (mapid_t mapping)
+{
+  struct thread *t = thread_current();
+  struct mmap_entry *m = search_by_mapid(t,mapping);
+  ASSERT (m != NULL);
+  if (m == NULL) {
+    exit(-1);
+  }
+  lock_acquire(&fs_lock);
+  //syscall_lock_acquire("munmap");
+  size_t file_size = m->file_size;
+  for (size_t ofs = 0; ofs < file_size ; ofs += PGSIZE) {
+    void *addr = m->upage + ofs;
+    size_t bytes = MIN(file_size - ofs, PGSIZE);
+    struct supp_page_table_entry *s = search_by_addr(t, addr);
+    ASSERT (s != NULL);
+    if (s->flags & O_PG_MEM) {
+      ASSERT(s->kpage != NULL);
+      set_pinned(s->kpage, true);
+    }
+    uint8_t flags = s->flags & O_PG_MASK;
+    switch (flags) {
+      case O_PG_MEM:
+        if (s->flags & O_DIRTY || pagedir_is_dirty(t->pagedir, s->upage)) {
+          file_write_at (m->file, s->upage, bytes, ofs);
+        }
+        // printf("[munmap] Tryting to free %p\n", s->kpage);
+        frame_free_page(s->kpage);
+        break;
+      case O_PG_SWAP:
+        if (s->flags & O_DIRTY || pagedir_is_dirty(t->pagedir, s->upage)) {
+          void *new_page = palloc_get_page(0);
+          swap_in(s->swap_idx, new_page);
+          file_write_at(m->file, new_page, PGSIZE, ofs);
+          palloc_free_page(new_page);
+        } else {
+          ASSERT(s->swap_idx != -1);
+          swap_free(s->swap_idx);
+        }
+        break;
+      case O_PG_FS:
+        break;
+      case O_PG_ALL_ZERO:
+        PANIC("??");
+      default:
+        PANIC("??????");
+    }
+    hash_delete(t->supp_page_table, &(s->elem));
+  }
+  list_remove(&m->elem);
+  file_close(m->file);
+  lock_release(&fs_lock);
+  //syscall_lock_release("munmap");
+  free(m);
+}
+#endif
 /* Simple iterative implementation */
 int
 fibonacci (int n)
@@ -494,6 +660,7 @@ fibonacci (int n)
         }
         return k;
 }
+
 int
 max_of_four_int (int a, int b, int c, int d) {
         int ab, cd;

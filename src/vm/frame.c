@@ -148,6 +148,12 @@ frame_evicted ()
       pagedir_set_accessed(pd, upage, false);
       continue;
     }
+    struct supp_page_table_entry *s = search_by_addr(f->t, f->upage);
+    if (s && (s->flags & O_PG_FS)) {
+      if (pagedir_is_dirty(f->t->pagedir, f->upage)) {
+        file_write_at(s->file, f->kpage, s->read_bytes, s->ofs);
+      }
+    }
     return f;
   }
   NOT_REACHED();
@@ -171,7 +177,6 @@ frame_get_page(enum palloc_flags flags, void *upage)
     page = palloc_get_page(PAL_USER | flags);
     ASSERT (page != NULL);
   }
-
   struct frame_table_entry *frame = malloc(sizeof(struct frame_table_entry));
   ASSERT (frame != NULL);
   struct thread *t = thread_current();

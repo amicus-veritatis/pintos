@@ -42,6 +42,24 @@ search_by_addr (struct thread *t, void * addr)
   return s;
 }
 
+struct supp_page_table_entry*
+search_by_addr_without_pg_round_down (struct thread *t, void * addr)
+{
+  struct supp_page_table_entry tmp;
+  memset(&tmp, 0, sizeof(tmp));
+  tmp.upage = (void *) addr;
+  if (t->supp_page_table == NULL) {
+    return NULL;
+  }
+  struct hash_elem *tmp_elem = hash_find(t->supp_page_table, &(tmp.elem));
+  if (tmp_elem == NULL) {
+    return NULL;
+  }
+  struct supp_page_table_entry *s = hash_entry(tmp_elem, struct supp_page_table_entry, elem);
+  return s;
+}
+
+
 inline void
 print_spte_entry (struct supp_page_table_entry *s)
 {

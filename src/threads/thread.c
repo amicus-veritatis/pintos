@@ -587,6 +587,8 @@ init_thread (struct thread *t, const char *name, int priority)
 #ifdef VM
   t->supp_page_table = NULL;
   t->file = NULL;
+  list_init(&(t->mmap));
+  t->mapid = 1;
 #endif
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

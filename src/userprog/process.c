@@ -33,7 +33,9 @@
 #define get_page(flags) palloc_get_page(flags)
 #define free_page(page) palloc_free_page(page)
 #endif
-
+#ifdef VM
+#define MIN(a,b) ((a)>(b)?(b):(a))
+#endif
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
@@ -216,12 +218,31 @@ process_wait (tid_t child_tid)
 void
 process_exit (void)
 {
-   struct thread *cur = thread_current ();
+  struct thread *cur = thread_current ();
 
+#ifdef VM
+  if (cur->file != NULL) {
+    file_allow_write(cur->file);
+    file_close(cur->file);
+  }
+#endif
+
+
+#ifdef VM
+  if (!list_empty(&(cur->mmap))) {
+    struct list_elem *it = list_begin(&(cur->mmap));
+    while (it != list_end(&(cur->mmap))) {
+      struct list_elem *next_iter = list_next(it); 
+      struct mmap_entry *m = list_entry(it, struct mmap_entry, elem); 
+      munmap(m->mapid);
+      it = next_iter;
+    }
+  }
+#endif
    for (int fd=MIN_FILENO; fd<FD_MAX_SIZE; fd++) {
     struct file *f = cur->fd[fd];
     if (f != NULL) {
-            file_close(cur->fd[fd]);
+        file_close(cur->fd[fd]);
         f= NULL;
     }
    }
@@ -260,14 +281,6 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-#ifdef VM
-  if (cur->file != NULL) {
-    file_allow_write(cur->file);
-    file_close(cur->file);
-  }
-#endif
-
-
    /* We're done with this process */
    cur->flags |= O_EXITED;
 
@@ -720,6 +733,54 @@ setup_stack (void **esp)
 #endif
 }
 #ifdef VM
+bool handle_mm_fault(struct supp_page_table_entry *s) {
+  uint8_t flags = s->flags & O_PG_MASK;
+  bool success = false;
+  if (flags == O_PG_MEM) {
+    return true;
+  }
+  void *new_page = frame_get_page(PAL_USER, s->upage);
+  if (new_page == NULL) {
+    return false;
+  }
+  switch (flags) {
+    case O_PG_ALL_ZERO:
+      memset(new_page, 0, PGSIZE);
+      success = true;
+      break;
+    case O_PG_FS:
+      lock_acquire(&fs_lock);
+      size_t bytes = file_read_at(s->file, new_page, s->read_bytes, s->ofs);
+      lock_release(&fs_lock);
+      if (bytes != (int)s->read_bytes)
+      {
+        frame_free_page(new_page);
+        return false;
+      }
+      memset(new_page + s->read_bytes, 0, s->zero_bytes);
+      success = true;
+      break;
+    case O_PG_SWAP:
+      swap_in(s->swap_idx, new_page);
+      success = true;
+      break;
+    default:
+      return false;
+  }
+
+  if (success) {
+    bool writable = (s->flags & O_WRITABLE) != 0;
+    if (!install_page(s->upage, new_page, writable)) {
+      frame_free_page(new_page);
+      return false;
+    }
+    s->kpage = new_page;
+    s->flags = (s->flags & O_NON_PG_MASK) | O_PG_MEM;
+    set_pinned(s->kpage, false);
+  }
+  return success;
+}
+/*
 bool
 handle_mm_fault (struct supp_page_table_entry *s)
 {
@@ -764,6 +825,7 @@ handle_mm_fault (struct supp_page_table_entry *s)
   }
   return success;
 }
+*/
 #endif
 
 /* Adds a mapping from user virtual address UPAGE to kernel
