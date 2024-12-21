@@ -212,12 +212,14 @@ lock_acquire (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
+  /*
   if (lock->holder == thread_current()) {
   	printf("[lock_acquire] lock addr: %p, current thread: %p (%s)\n", lock, thread_current(), thread_current()->name);
     printf("[DEBUG] Thread %s (tid=%d) tried to re-acquire lock %p.\n", 
            thread_current()->name, thread_tid(), lock);
     debug_backtrace_all();
   }
+  */
   ASSERT (!lock_held_by_current_thread (lock));
 
   sema_down (&lock->semaphore);
