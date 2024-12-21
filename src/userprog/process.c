@@ -780,52 +780,7 @@ bool handle_mm_fault(struct supp_page_table_entry *s) {
   }
   return success;
 }
-/*
-bool
-handle_mm_fault (struct supp_page_table_entry *s)
-{
-  uint8_t flags = s->flags & O_PG_MASK;
-  bool success = false;
-  if (flags == O_PG_MEM) {
-    return true;
-  }
-  void *new_page = frame_get_page(PAL_USER, s->upage);
-  ASSERT (new_page != NULL);
-  switch (flags) {
-    case O_PG_ALL_ZERO:
-      memset(new_page, 0, PGSIZE);
-      success = true;
-      break;
-    case O_PG_FS:
-      file_seek(s->file, s->ofs);
-      if (file_read(s->file, new_page, s->read_bytes) != (int) s->read_bytes) {
-        frame_free_page(new_page);
-        return false;
-      }
-      memset(new_page + s->read_bytes, 0, s->zero_bytes);
-      success = true;
-      break;
-    case O_PG_SWAP:
-      swap_in(s->swap_idx, new_page);
-      success = true;
-      break;
-    default:
-      return success;
-  }
 
-  if (success) {
-    bool writable = (s->flags & O_WRITABLE) != 0;
-    if (!install_page(s->upage, new_page, writable)) {
-      frame_free_page(new_page);
-      return false;
-    }
-    s->kpage = new_page;
-    s->flags = (s->flags & O_NON_PG_MASK) | O_PG_MEM;
-    set_pinned(s->kpage, false);
-  }
-  return success;
-}
-*/
 #endif
 
 /* Adds a mapping from user virtual address UPAGE to kernel
